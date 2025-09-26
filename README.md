@@ -1,7 +1,3 @@
-Here’s the updated **README.md** draft with that note clearly included. You can place it under **Status / Testing** so potential contributors see it immediately:
-
----
-
 # Creality WebSocket Integration for Home Assistant
 
 This custom [Home Assistant](https://www.home-assistant.io/) integration provides **native, low-latency WebSocket control and telemetry** for Creality K-series and compatible 3D printers. It exposes the printer’s live state, sensors, controls, and camera stream to Home Assistant and includes a ready-to-use Lovelace card for printer monitoring.
@@ -181,7 +177,3 @@ These map to printer WebSocket commands (e.g., G-code passthrough, setpoints). S
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-Do you want me to also update the **Lovelace card editor schema** so that the `name` field is clearly exposed as a **required field** (instead of optional), to better support multi-printer setups?
