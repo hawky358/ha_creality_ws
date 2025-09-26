@@ -1,0 +1,25 @@
+pause_print:
+  name: Pause Print
+  description: Pause the current print job.
+resume_print:
+  name: Resume Print
+  description: Resume a paused print job.
+stop_print:
+  name: Stop Print
+  description: Stop the current print job immediately.
+
+home_xy_then_z:
+  name: Home (XY then Z)
+  description: Home XY first, then Z.
+
+light_on:
+  name: Light On
+  description: Turn printer light on.
+
+light_off:
+  name: Light Off
+  description: Turn printer light off.
+
+light_toggle:
+  name: Light Toggle
+  description: Toggle printer light.

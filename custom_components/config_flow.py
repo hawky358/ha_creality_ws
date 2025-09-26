@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+import logging
+from typing import Any, Optional
+
+import voluptuous as vol
+from homeassistant import config_entries
+from homeassistant.data_entry_flow import FlowResult
+
+from .const import (
+    DOMAIN, CONF_HOST, CONF_NAME, DEFAULT_NAME, WS_PORT,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def _probe_tcp(host: str, port: int, timeout: float = 2.5) -> bool:
+    """Fast non-blocking TCP connect probe; returns True if connect succeeds."""
+    try:
+        fut = asyncio.open_connection(host, port)
+        r, w = await asyncio.wait_for(fut, timeout=timeout)
+        w.close()
+        try:
+            await w.wait_closed()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _extract_host_from_zeroconf(info: Any) -> Optional[str]:
+    """Accept dict-style and object-style Zeroconf payloads without importing typed classes."""
+    if isinstance(info, dict):
+        host = info.get("host")
+        if host:
+            return host
+        addrs = info.get("addresses") or info.get("ip_addresses") or info.get("ip_address")
+        if isinstance(addrs, (list, tuple)) and addrs:
+            return str(addrs[0])
+        if isinstance(addrs, str):
+            return addrs
+        hn = info.get("hostname")
+        if isinstance(hn, str):
+            return hn.strip(".")
+        return None
+
+    try:
+        addrs = []
+        if hasattr(info, "ip_addresses") and info.ip_addresses:
+            addrs = [str(a) for a in info.ip_addresses]
+        elif hasattr(info, "addresses") and info.addresses:
+            addrs = [str(a) for a in info.addresses]
+        if addrs:
+            v4 = next((a for a in addrs if ":" not in a), None)
+            return v4 or addrs[0]
+        if getattr(info, "host", None):
+            return str(info.host)
+        if getattr(info, "hostname", None):
+            return str(info.hostname).rstrip(".")
+    except Exception:
+        pass
+    return None
+
+
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Config flow for Creality WebSocket printers."""
+    VERSION = 3
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST].strip()
+            await self.async_set_unique_id(host)
+            self._abort_if_unique_id_configured()
+
+            if not await _probe_tcp(host, WS_PORT):
+                errors["base"] = "cannot_connect"
+            else:
+                title = user_input.get(CONF_NAME) or f"{DEFAULT_NAME} ({host})"
+                return self.async_create_entry(title=title, data={CONF_HOST: host})
+
+        schema = vol.Schema({
+            vol.Required(CONF_HOST): str,
+            vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+        })
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_zeroconf(self, discovery_info: Any) -> FlowResult:
+        """Handle zeroconf discovery."""
+        host = _extract_host_from_zeroconf(discovery_info)
+        if not host:
+            return self.async_abort(reason="cannot_connect")
+
+        if not await _probe_tcp(host, WS_PORT):
+            return self.async_abort(reason="not_k1c")
+
+        await self.async_set_unique_id(host)
+        self._abort_if_unique_id_configured()
+
+        title = f"{DEFAULT_NAME} ({host})"
+        return self.async_create_entry(title=title, data={CONF_HOST: host})

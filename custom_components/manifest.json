@@ -1,0 +1,15 @@
+{
+  "domain": "ha_creality_ws",
+  "name": "Creality WebSocket Integration",
+  "version": "0.3.0",
+  "documentation": "https://example.invalid/creality-k-ws",
+  "requirements": [],
+  "codeowners": ["@3dg1luk43"],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "loggers": ["custom_components.ha_creality_ws"],
+  "zeroconf": [
+    { "type": "_http._tcp.local.", "name": "*Creality*" },
+    { "type": "_workstation._tcp.local.", "name": "*Creality*" }
+  ]
+}
