@@ -1,6 +1,5 @@
-/* K1C Printer Card — optimized composite card + lightweight GUI editor
- * Dependencies (Resources, type: module): mushroom, stack-in-card, card-mod
- * Docs/guidance: loadCardHelpers + createCardElement for composite custom cards. 
+/* K1C / Creality Printer Card — composite card + lightweight GUI editor
+ * Dependencies: mushroom, stack-in-card, card-mod
  */
 
 const CARD_TAG = "k1c-printer-card";
@@ -15,7 +14,10 @@ function getHelpers() {
 
 // ---- defaults ----
 const DEFAULT_ENTITIES = {
+  // friendly name (user-configurable)
   name: "3D Printer",
+
+  // entities
   camera: "camera.k1c_printer_camera",
   status: "sensor.k1c_print_status",
   progress: "sensor.k1c_print_progress",
@@ -35,22 +37,24 @@ function buildPreset(cfg) {
   const ent = (k) => cfg[k] || DEFAULT_ENTITIES[k];
 
   const secondary = `
-    {% set st = states('${ent("status")}')|lower %}
-    {% set pct = states('${ent("progress")}')|int(0) %}
+    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
+    {% set pct = (states('${ent("progress")}')|int(0)) %}
     {% if st in ['printing','resuming','pausing','paused'] %}{{ pct }}% {{ st|title }}
     {% elif st in ['idle','completed','error','unknown','off'] %}{{ st|title }}
     {% else %}Unknown{% endif %}
   `;
+
   const icon = `
-    {% set st = states('${ent("status")}')|lower %}
+    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
     {% if st in ['off','unknown'] %}mdi:printer-3d-off
     {% elif st in ['printing','resuming','pausing','paused'] %}mdi:printer-3d-nozzle
     {% elif st == 'error' %}mdi:close-octagon
     {% else %}mdi:printer-3d
     {% endif %}
   `;
+
   const icon_color = `
-    {% set st = states('${ent("status")}')|lower %}
+    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
     {% if st in ['off','unknown'] %}grey
     {% elif st in ['paused','pausing'] %}#fc6d09
     {% elif st == 'error' %}red
@@ -59,15 +63,12 @@ function buildPreset(cfg) {
     {% else %}grey
     {% endif %}
   `;
+
   const ring_style = `
-    {% set st = states('${ent("status")}')|lower %}
+    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
     {% set pct = states('${ent("progress")}')|int(0) %}
     .shape { --icon-size: 80px; }
-    ha-state-icon {
-      --icon-symbol-size: 40px;
-      width: 40px; height: 40px;
-      color: {% if st in ['off','unknown'] %} grey {% else %} inherit {% endif %};
-    }
+    ha-state-icon { --icon-symbol-size: 40px; width: 40px; height: 40px; }
     .shape {
       {% if st in ['printing','resuming','pausing','paused'] %}
         background:
@@ -76,6 +77,7 @@ function buildPreset(cfg) {
       {% else %} background: none; {% endif %}
     }
   `;
+
   const time_fmt = `
     {% set s = states('${ent("time_left")}')|int(0) %}
     {% set h = (s // 3600) %}{% set m = (s % 3600) // 60 %}{% set sec = s % 60 %}
@@ -107,7 +109,7 @@ function buildPreset(cfg) {
             type: "custom:mushroom-chips-card",
             alignment: "end",
             chips: [
-              // --- Pause (printing | resuming | pausing) ---
+              // --- PAUSE: only when actively printing (never off/unknown) ---
               {
                 type: "conditional",
                 conditions: [
@@ -129,7 +131,8 @@ function buildPreset(cfg) {
                   card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-orange),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" },
                 },
               },
-              // --- Resume (paused) ---
+
+              // --- RESUME: only when paused (never off/unknown) ---
               {
                 type: "conditional",
                 conditions: [
@@ -144,7 +147,8 @@ function buildPreset(cfg) {
                   card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-green),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" },
                 },
               },
-              // --- Stop (printing | resuming | pausing | paused) ---
+
+              // --- STOP: only when in any active/paused state (never off/unknown) ---
               {
                 type: "conditional",
                 conditions: [
@@ -167,36 +171,42 @@ function buildPreset(cfg) {
                   card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-red),0.95); --icon-color: rgb(var(--rgb-white)); border:none}" },
                 },
               },
-              // Spacer
+
+              // --- LIGHT: hide completely when printer is off/unknown ---
               {
-                type: "template",
-                icon: "mdi:blank",
-                content: "",
-                card_mod: {
-                  style: "ha-card { background: transparent; border: none; pointer-events: none; width: 24px; }",
-                },
-              },
-              // Light (always shown)
-              {
-                type: "template",
-                entity: ent("light"),
-                icon: "mdi:lightbulb",
-                content: "",
-                icon_color: `
-                  {% if is_state('${ent("light")}','on') %}orange{% else %}lightgrey{% endif %}
-                `,
-                tap_action: { action: "toggle" },
-                card_mod: {
-                  style: `
-                    ha-card{
-                      border:none;
-                      {% if is_state('${ent("light")}','on') -%}
-                        --chip-background: rgba(var(--rgb-yellow),0.95);
-                      {%- else -%}
-                        --chip-background: rgba(var(--rgb-grey),0.35);
-                      {%- endif %}
-                    }
+                type: "conditional",
+                conditions: [
+                  { condition: "state_not", entity: ent("status"), state: "off" },
+                  { condition: "state_not", entity: ent("status"), state: "unknown" },
+                ],
+                chip: {
+                  type: "template",
+                  entity: ent("light"),
+                  icon: "mdi:lightbulb",
+                  content: "",
+                  icon_color: `
+                    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
+                    {% if st in ['off','unknown'] %}lightgrey
+                    {% elif is_state('${ent("light")}','on') %}orange
+                    {% else %}lightgrey{% endif %}
                   `,
+                  tap_action: { action: "toggle" },
+                  card_mod: {
+                    style: `
+                      ha-card{
+                        border:none;
+                        {% set st = (states('${ent("status")}') or 'unknown')|lower %}
+                        {% if st in ['off','unknown'] -%}
+                          --chip-background: rgba(var(--rgb-grey),0.35);
+                          pointer-events: none; opacity: 0.6;
+                        {%- elif is_state('${ent("light")}','on') -%}
+                          --chip-background: rgba(var(--rgb-yellow),0.95);
+                        {%- else -%}
+                          --chip-background: rgba(var(--rgb-grey),0.35);
+                        {%- endif %}
+                      }
+                    `,
+                  },
                 },
               },
             ],
@@ -206,6 +216,8 @@ function buildPreset(cfg) {
           },
         ],
       },
+
+      // Telemetry row
       {
         type: "custom:mushroom-chips-card",
         alignment: "center",
@@ -231,24 +243,17 @@ function buildPreset(cfg) {
 
 class K1CPrinterCard extends HTMLElement {
   async setConfig(config) {
-    this._cfg = { ...config }; // shallow copy
+    this._cfg = { ...config };
     if (!this._root) this._root = this.attachShadow({ mode: "open" });
     if (!this._helpers) this._helpers = await getHelpers();
 
-    // If we already created a child card, try to update in-place.
     if (this._el && this._el.setConfig) {
-      try {
-        this._el.setConfig(buildPreset(this._cfg));
-        return;
-      } catch (_) { /* fall through to rebuild */ }
+      try { this._el.setConfig(buildPreset(this._cfg)); return; } catch (_) {}
     }
 
-    // (Re)build once.
     const el = await this._helpers.createCardElement(buildPreset(this._cfg));
     el.hass = this._hass;
     this._el = el;
-
-    // Replace root content without tearing down the whole shadow DOM repeatedly.
     this._root.replaceChildren(el);
   }
 
@@ -260,7 +265,7 @@ class K1CPrinterCard extends HTMLElement {
 }
 customElements.define(CARD_TAG, K1CPrinterCard);
 
-// ---------- Lightweight GUI editor (no YAML preview, debounced) ----------
+// ---------- Lightweight GUI editor ----------
 class K1CPrinterCardEditor extends HTMLElement {
   set hass(hass) { this._hass = hass; if (this._form) this._form.hass = hass; }
   setConfig(config) { this._cfg = { ...DEFAULT_ENTITIES, ...(config || {}) }; this._render(); }
@@ -300,7 +305,7 @@ class K1CPrinterCardEditor extends HTMLElement {
     clearTimeout(this._t);
     this._t = setTimeout(() => {
       this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: val } }));
-    }, 120); // debounce editor churn
+    }, 120);
   }
 }
 customElements.define(EDITOR_TAG, K1CPrinterCardEditor);
@@ -309,6 +314,6 @@ customElements.define(EDITOR_TAG, K1CPrinterCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: CARD_TAG,
-  name: "K1C Printer Card",
-  description: "Compact Mushroom + card-mod + stack-in-card preset for Creality K-series.",
+  name: "K1C / Creality Printer Card",
+  description: "Compact Mushroom + card-mod + stack-in-card preset for Creality Klipper printers.",
 });
