@@ -32,7 +32,7 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 It may work on other **Creality Klipper-based printers with the stock web interface**, but this is unverified.
 
 👉 **Looking for testers!**
-If you own another supported model (e.g. K1, K1 Max, Sermoon D3, etc.), please install this integration and report results by opening an issue or PR on GitHub.
+If you own another supported model (e.g. K1, K1 Max, K2), please install this integration and report results by opening an issue or PR on GitHub.
 
 ---
 
@@ -141,12 +141,11 @@ stop_btn: button.voron_stop_print
 
 ### Card Features
 
-* Progress ring with dynamic color/status
 * Pause, Resume, Stop chips (context-sensitive)
 * Light toggle chip
 * Temperature, layer, and time chips
 
-The card **uses the friendly name you configured** (e.g. `Voron 2.4`) instead of a hardcoded `K1C`.
+The card **uses the friendly name you configured** instead of a hardcoded `K1C`.
 
 ---
 
