@@ -4,6 +4,11 @@ import re
 from typing import Any, Callable
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
+...
+from .entity import K1CEntity
+from .const import DOMAIN
+
+
 
 # Unit compatibility across HA versions
 try:
@@ -206,9 +211,21 @@ class K1CSimpleFieldSensor(K1CEntity, SensorEntity):
         self._attr_state_class = spec.get("state_class")
         self._get_attrs: Callable[[dict[str, Any]], dict[str, Any]] = spec.get("attrs") or (lambda d: {})
 
+    def _zero_value(self):
+        # Return 0 for numeric-ish fields; None for string/non-numeric fields
+        # The "system" sensor is textual; everything else in SPECS is numeric.
+        if self._attr_native_unit_of_measurement is None and self._field not in ("__pos_x__", "__pos_y__", "__pos_z__", "__progress__"):
+            # likely a text field ("system")
+            return None
+        return 0
+
     @property
     def native_value(self):
         d = self.coordinator.data
+
+        # Zero on off/unknown
+        if self._should_zero():
+            return self._zero_value()
 
         # computed fields
         if self._field in ("__pos_x__", "__pos_y__", "__pos_z__"):
@@ -231,6 +248,8 @@ class K1CSimpleFieldSensor(K1CEntity, SensorEntity):
 
 # ----------------- specific sensors (status + new metrics) -----------------
 
+# custom_components/ha_creality_ws/sensor.py
+
 class PrintStatusSensor(K1CEntity, SensorEntity):
     _attr_name = "Print Status"
     _attr_icon = "mdi:printer-3d"
@@ -240,40 +259,53 @@ class PrintStatusSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        # HIGHEST PRIORITY: Check the power switch first.
+        if self.coordinator.power_is_off():
+            return "off"
+
+        # SECOND PRIORITY: Check for a lost WebSocket connection.
+        if not self.coordinator.available:
+            return "unknown"
+
+        # If we get here, the printer is ON and CONNECTED.
+        # Now, determine the operational state.
         d = self.coordinator.data or {}
 
-        # explicit error
-        try:
-            if isinstance(d.get("err"), dict) and (d["err"].get("errcode") or 0) != 0:
-                return "error"
-        except Exception:
-            pass
+        if d.get("err", {}).get("errcode", 0) != 0:
+            return "error"
 
-        # pause code (observed: 5 after pause=1)
+        if 1 <= d.get("withSelfTest", 0) <= 99:
+            return "self-testing"
+
         st = d.get("state")
-        if st == 5:
-            return "paused"
+        fname = d.get("printFileName") or ""
+        progress = d.get("printProgress") or d.get("dProgress")
 
-        fname = (d.get("printFileName") or "").strip()
-        progress = d.get("printProgress", d.get("dProgress"))
+        # Ensure progress is a number before comparing
         try:
-            progress = int(progress) if progress is not None else None
-        except (TypeError, ValueError):
-            progress = None
+            progress = int(progress) if progress is not None else -1
+        except (ValueError, TypeError):
+            progress = -1
 
         if fname:
-            if self.coordinator.paused_flag():
-                return "paused"
-            if progress is not None and progress >= 100:
+            if progress >= 100:
                 return "completed"
-            return "printing"
+            # THIS IS THE LINE THAT WAS BROKEN
+            if st == 5 or self.coordinator.paused_flag():
+                return "paused"
+            if st == 4:
+                return "stopped"
+            if st == 1:
+                return "printing"
+            if st == 0:
+                return "processing"
 
         return "idle"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.coordinator.data or {}
-        return {
+        attrs = {
             "file": d.get("printFileName") or "",
             "progress": d.get("printProgress") or d.get("dProgress"),
             "job_time_s": d.get("printJobTime"),
@@ -284,12 +316,18 @@ class PrintStatusSensor(K1CEntity, SensorEntity):
             "state_raw": d.get("state"),
             "err": d.get("err"),
         }
+        err_code = d.get("err", {}).get("errcode", 0)
+        if err_code != 0:
+            attrs["error_code"] = err_code
+            # The error message mapping function is not yet implemented, so it remains commented out.
+            # attrs["error_message"] = self._map_error_code_to_message(err_code)
+        
+        return attrs
 
 
 class UsedMaterialLengthSensor(K1CEntity, SensorEntity):
     _attr_name = "Used Material Length"
     _attr_icon = "mdi:counter"
-    # Old file exposed centimeters; raw looks like millimetres.
     _attr_native_unit_of_measurement = U_CM
     _attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -298,13 +336,14 @@ class UsedMaterialLengthSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return 0.0
         v = self.coordinator.data.get("usedMaterialLength")
         try:
             mm = float(v)
-            return round(mm / 10.0, 2)  # cm to match your old entities
+            return round(mm / 10.0, 2)
         except (TypeError, ValueError):
             return None
-
 
 class PrintJobTimeSensor(K1CEntity, SensorEntity):
     _attr_name = "Print Job Time"
@@ -317,12 +356,13 @@ class PrintJobTimeSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
+        if self._should_zero():
+            return 0
         v = self.coordinator.data.get("printJobTime")
         try:
             return int(v) if v is not None else None
         except (TypeError, ValueError):
             return None
-
 
 class PrintLeftTimeSensor(K1CEntity, SensorEntity):
     _attr_name = "Print Time Left"
@@ -335,12 +375,13 @@ class PrintLeftTimeSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
+        if self._should_zero():
+            return 0
         v = self.coordinator.data.get("printLeftTime")
         try:
             return int(v) if v is not None else None
         except (TypeError, ValueError):
             return None
-
 
 class RealTimeFlowSensor(K1CEntity, SensorEntity):
     _attr_name = "Real-Time Flow"
@@ -353,6 +394,8 @@ class RealTimeFlowSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return 0.0
         return _safe_float(self.coordinator.data.get("realTimeFlow"))
 
 
@@ -365,6 +408,8 @@ class CurrentObjectSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        if self._should_zero():
+            return None
         v = self.coordinator.data.get("current_object")
         return str(v) if v is not None else None
 
@@ -386,11 +431,43 @@ class ObjectCountSensor(K1CEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
+        if self._should_zero():
+            return 0
         objs = self.coordinator.data.get("objects_list")
         if isinstance(objs, list):
             return len(objs)
         return None
 
+
+class K1CPrintControlSensor(K1CEntity, SensorEntity):
+    """Diagnostic sensor exposing control pipeline state (queued actions, paused flag, raw states)."""
+    _attr_name = "Print Control"
+    _attr_icon = "mdi:debug-step-over"
+    _attr_state_class = None  # not a measurement
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, self._attr_name, "print_control")
+
+    @property
+    def native_value(self) -> str | None:
+        # Keep state human-readable but stable: "queued" if anything is pending, else "ok".
+        if self.coordinator.pending_pause() or self.coordinator.pending_resume():
+            return "queued"
+        return "ok" if self.coordinator.available else "unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        d = self.coordinator.data or {}
+        return {
+            "pending_pause": self.coordinator.pending_pause(),
+            "pending_resume": self.coordinator.pending_resume(),
+            "paused": self.coordinator.paused_flag(),
+            # raw hints (useful for debugging UI logic)
+            "status_raw_state": d.get("state"),
+            "status_raw_deviceState": d.get("deviceState"),
+            "print_file": d.get("printFileName") or "",
+            "progress": d.get("printProgress") or d.get("dProgress"),
+        }
 
 # ----------------- setup -----------------
 
@@ -412,5 +489,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(RealTimeFlowSensor(coord))
     ents.append(CurrentObjectSensor(coord))
     ents.append(ObjectCountSensor(coord))
+    ents.append(K1CPrintControlSensor(coord))
 
     async_add_entities(ents)

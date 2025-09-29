@@ -1,11 +1,7 @@
 from __future__ import annotations
-
-import json
 import logging
 from typing import Any
-
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
 from .ws_client import K1CClient
 from .const import DOMAIN, STALE_AFTER_SECS
 
@@ -13,22 +9,33 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class K1CCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Central store + transport wrapper."""
-
-    def __init__(self, hass, host: str):
+    def __init__(self, hass, host: str, power_switch: str | None = None):
         super().__init__(hass, _LOGGER, name=f"{DOMAIN}@{host}", update_interval=None)
         self.client = K1CClient(host, self._handle_message)
         self.data: dict[str, Any] = {}
         self._paused_flag = False
         self._last_avail = False
+        self._power_switch_entity: str | None = (power_switch or "").strip() or None
+        self._pending_pause = False
+        self._pending_resume = False
 
-    # -------- lifecycle --------
+    def set_power_switch(self, entity_id: str | None) -> None:
+        self._power_switch_entity = (entity_id or "").strip() or None
+        self.async_update_listeners()
+
+    def power_is_off(self) -> bool:
+        eid = self._power_switch_entity
+        if not eid:
+            return False
+        st = self.hass.states.get(eid)
+        if not st:
+            return True # FAIL-SAFE: Assume OFF if switch entity isn't ready
+        return str(st.state).lower() in ("off", "unavailable", "unknown")
+
     async def async_start(self) -> None:
         await self.client.start()
-
     async def async_stop(self) -> None:
         await self.client.stop()
-
     async def wait_first_connect(self, timeout: float = 5.0) -> bool:
         return await self.client.wait_first_connect(timeout=timeout)
 
@@ -38,40 +45,106 @@ class K1CCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_avail = now_avail
             self.async_update_listeners()
 
-    # -------- availability --------
     @property
     def available(self) -> bool:
         return (self.hass.loop.time() - self.client.last_rx_monotonic()) < STALE_AFTER_SECS
 
-    # -------- pause flag --------
+    # -------- paused flag (authoritative from telemetry only) --------
     def mark_paused(self, paused: bool) -> None:
-        self._paused_flag = bool(paused)
-        self.async_update_listeners()
+        # Keep method for compatibility; only call from telemetry recompute
+        if self._paused_flag != bool(paused):
+            self._paused_flag = bool(paused)
+            self.async_update_listeners()
 
     def paused_flag(self) -> bool:
         return self._paused_flag
 
+    # -------- state helpers (heuristics based on fields already present) --------
+    def _is_busy_homing(self) -> bool:
+        # You already use deviceState==7 in button.py for homing/busy
+        return (self.data or {}).get("deviceState") == 7
+
+    def _has_active_job(self) -> bool:
+        d = self.data or {}
+        fname = (d.get("printFileName") or "").strip()
+        prog = d.get("printProgress", d.get("dProgress"))
+        return bool(fname) and prog is not None
+
+    def _is_printing(self) -> bool:
+        # consider printing if job exists, not paused, and not homing
+        return self._has_active_job() and not self._paused_flag and not self._is_busy_homing()
+
+    def _recompute_paused_from_telemetry(self) -> None:
+        d = self.data or {}
+        st = d.get("state")
+        # Your stack treats state==5 as paused; also honor explicit fields if present
+        telem_paused = (st == 5) or bool(d.get("pause") == 1 or d.get("paused") or d.get("isPaused"))
+        self.mark_paused(telem_paused)
+    # coordinator.py — add public getters
+    def pending_pause(self) -> bool:
+        return bool(self._pending_pause)
+
+    def pending_resume(self) -> bool:
+        return bool(self._pending_resume)
+
+    # -------- queued user actions (no optimistic UI) --------
+    async def request_pause(self) -> None:
+        """Pause now if printable; otherwise queue until printable."""
+        if self._is_printing():
+            try:
+                await self.client.send_set_retry(pause=1)
+                _LOGGER.debug("Pause sent immediately")
+            except Exception as exc:
+                self._pending_pause = True
+                _LOGGER.warning("Pause send failed; queued. Error: %s", exc)
+        else:
+            self._pending_pause = True
+            _LOGGER.debug("Pause queued (not in printable state)")
+
+    async def request_resume(self) -> None:
+        """Resume now if telemetry shows paused; otherwise queue until paused shows up."""
+        if self._paused_flag:
+            try:
+                await self.client.send_set_retry(pause=0)
+                _LOGGER.debug("Resume sent immediately")
+            except Exception as exc:
+                self._pending_resume = True
+                _LOGGER.warning("Resume send failed; queued. Error: %s", exc)
+        else:
+            self._pending_resume = True
+            _LOGGER.debug("Resume queued (not in paused state)")
+
+    async def _flush_pending(self) -> None:
+        """Attempt to execute any queued actions when state allows (called on every telemetry frame)."""
+        if self._pending_pause and self._is_printing():
+            try:
+                await self.client.send_set_retry(pause=1)
+                self._pending_pause = False
+                _LOGGER.debug("Queued pause executed")
+            except Exception as exc:
+                _LOGGER.warning("Queued pause failed; will retry. Error: %s", exc)
+
+        if self._pending_resume and self._paused_flag:
+            try:
+                await self.client.send_set_retry(pause=0)
+                self._pending_resume = False
+                _LOGGER.debug("Queued resume executed")
+            except Exception as exc:
+                _LOGGER.warning("Queued resume failed; will retry. Error: %s", exc)
+
     # -------- inbound frame handler --------
     async def _handle_message(self, payload: dict[str, Any]) -> None:
-        # Merge raw frame into coordinator data
+        # Merge raw frame into coordinator data (you already did this previously)
         self.data.update(payload)
 
-        # Parse stringified JSON lists for objects/exclusions
+        # 1) recompute paused strictly from telemetry (authoritative)
+        self._recompute_paused_from_telemetry()
+
+        # 2) opportunistically try queued actions as state evolves
         try:
-            objs_raw = self.data.get("objects")
-            exc_raw = self.data.get("excluded_objects")
-            if isinstance(objs_raw, str) and objs_raw.strip().startswith("["):
-                self.data["objects_list"] = json.loads(objs_raw)
-            if isinstance(exc_raw, str) and exc_raw.strip().startswith("["):
-                self.data["excluded_objects_list"] = json.loads(exc_raw)
+            await self._flush_pending()
         except Exception:
-            pass
+            _LOGGER.exception("flush_pending failed")
 
-        # If a job looks active again, clear manual paused flag
-        if (self.data.get("printStartTime") or self.data.get("printFileName")) and (
-            (self.data.get("printProgress") or self.data.get("dProgress") or 0) > 0
-            or (self.data.get("printJobTime") or 0) > 0
-        ):
-            self._paused_flag = False
-
+        # 3) notify listeners
         self.async_update_listeners()

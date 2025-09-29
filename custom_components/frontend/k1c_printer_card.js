@@ -12,65 +12,62 @@ function getHelpers() {
   return HELPERS_PROMISE;
 }
 
-// ---- defaults ----
-const DEFAULT_ENTITIES = {
-  // friendly name (user-configurable)
-  name: "3D Printer",
-
-  // entities
-  camera: "camera.k1c_printer_camera",
-  status: "sensor.k1c_print_status",
-  progress: "sensor.k1c_print_progress",
-  time_left: "sensor.k1c_print_time_left",
-  nozzle: "sensor.k1c_nozzle_temperature",
-  bed: "sensor.k1c_bed_temperature",
-  box: "sensor.k1c_box_temperature",
-  layer: "sensor.k1c_working_layer",
-  total_layers: "sensor.k1c_total_layers",
-  light: "switch.k1c_light",
-  pause_btn: "button.k1c_pause_print",
-  resume_btn: "button.k1c_resume_print",
-  stop_btn: "button.k1c_stop_print",
-};
-
 function buildPreset(cfg) {
-  const ent = (k) => cfg[k] || DEFAULT_ENTITIES[k];
+  // Use user's config directly.
+  const name = cfg.name || "3D Printer";
+  const camera_entity = cfg.camera || "";
+  const status_entity = cfg.status || "";
+  const progress_entity = cfg.progress || "";
+  const time_left_entity = cfg.time_left || "";
+  const nozzle_entity = cfg.nozzle || "";
+  const bed_entity = cfg.bed || "";
+  const box_entity = cfg.box || "";
+  const layer_entity = cfg.layer || "";
+  const total_layers_entity = cfg.total_layers || "";
+  const light_entity = cfg.light || "";
+  const pause_btn_entity = cfg.pause_btn || "";
+  const resume_btn_entity = cfg.resume_btn || "";
+  const stop_btn_entity = cfg.stop_btn || "";
 
   const secondary = `
-    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-    {% set pct = (states('${ent("progress")}')|int(0)) %}
-    {% if st in ['printing','resuming','pausing','paused'] %}{{ pct }}% {{ st|title }}
-    {% elif st in ['idle','completed','error','unknown','off'] %}{{ st|title }}
-    {% else %}Unknown{% endif %}
+    {% set st = (states('${status_entity}') or 'unknown')|lower %}
+    {% set pct = (states('${progress_entity}')|int(0)) %}
+    {% if st in ['printing','resuming','pausing','paused'] %}
+      {{ pct }}% {{ st|title }}
+    {% else %}
+      {{ st|replace('_', ' ')|title }}
+    {% endif %}
   `;
 
   const icon = `
-    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-    {% if st in ['off','unknown'] %}mdi:printer-3d-off
-    {% elif st in ['printing','resuming','pausing','paused'] %}mdi:printer-3d-nozzle
+    {% set st = (states('${status_entity}') or 'unknown')|lower %}
+    {% if st in ['off', 'unknown', 'stopped'] %}mdi:printer-3d-off
+    {% elif st in ['printing', 'resuming', 'pausing', 'paused'] %}mdi:printer-3d-nozzle
     {% elif st == 'error' %}mdi:close-octagon
+    {% elif st == 'self-testing' %}mdi:cogs
     {% else %}mdi:printer-3d
     {% endif %}
   `;
 
   const icon_color = `
-    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-    {% if st in ['off','unknown'] %}grey
-    {% elif st in ['paused','pausing'] %}#fc6d09
+    {% set st = (states('${status_entity}') or 'unknown')|lower %}
+    {% if st in ['off', 'unknown', 'stopped'] %}grey
+    {% elif st in ['paused', 'pausing'] %}#fc6d09
     {% elif st == 'error' %}red
-    {% elif st in ['printing','resuming'] %}var(--primary-color)
-    {% elif st in ['idle','completed'] %}green
+    {% elif st in ['printing', 'resuming', 'processing'] %}var(--primary-color)
+    {% elif st in ['idle', 'completed'] %}green
+    {% elif st == 'self-testing' %}blue
     {% else %}grey
     {% endif %}
   `;
 
   const ring_style = `
-    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-    {% set pct = states('${ent("progress")}')|int(0) %}
+    {% set st = (states('${status_entity}') or 'unknown')|lower %}
+    {% set pct = states('${progress_entity}')|int(0) %}
     .shape { --icon-size: 80px; }
     ha-state-icon { --icon-symbol-size: 40px; width: 40px; height: 40px; }
     .shape {
-      {% if st in ['printing','resuming','pausing','paused'] %}
+      {% if st in ['printing', 'resuming', 'pausing', 'paused'] %}
         background:
           radial-gradient(var(--card-background-color) 60%, transparent 0),
           conic-gradient(var(--primary-color) {{ pct }}%, rgba(var(--rgb-grey),0.25) {{ pct }}%);
@@ -79,7 +76,7 @@ function buildPreset(cfg) {
   `;
 
   const time_fmt = `
-    {% set s = states('${ent("time_left")}')|int(0) %}
+    {% set s = states('${time_left_entity}')|int(0) %}
     {% set h = (s // 3600) %}{% set m = (s % 3600) // 60 %}{% set sec = s % 60 %}
     {% if h > 0 %}{{ '%d:%02d:%02d'|format(h, m, sec) }}
     {% elif m > 0 %}{{ '%d:%02d'|format(m, sec) }}
@@ -94,8 +91,8 @@ function buildPreset(cfg) {
         cards: [
           {
             type: "custom:mushroom-template-card",
-            entity: ent("camera"),
-            primary: cfg.name || DEFAULT_ENTITIES.name,
+            entity: camera_entity,
+            primary: name,
             secondary, icon, icon_color,
             tap_action: { action: "more-info" },
             card_mod: {
@@ -109,132 +106,79 @@ function buildPreset(cfg) {
             type: "custom:mushroom-chips-card",
             alignment: "end",
             chips: [
-              // --- PAUSE: only when actively printing (never off/unknown) ---
+              // PAUSE
               {
                 type: "conditional",
-                conditions: [
-                  {
-                    condition: "or",
-                    conditions: [
-                      { condition: "state", entity: ent("status"), state: "printing" },
-                      { condition: "state", entity: ent("status"), state: "resuming" },
-                      { condition: "state", entity: ent("status"), state: "pausing" },
-                    ],
-                  },
-                ],
-                chip: {
-                  type: "entity",
-                  entity: ent("pause_btn"),
-                  icon: "mdi:pause",
-                  content_info: "none",
-                  tap_action: { action: "toggle" },
-                  card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-orange),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" },
-                },
+                conditions: [{ condition: "state", entity: status_entity, state: "printing" }],
+                chip: { type: "entity", entity: pause_btn_entity, icon: "mdi:pause", content_info: "none", tap_action: { action: "toggle" }, card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-orange),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" } },
               },
-
-              // --- RESUME: only when paused (never off/unknown) ---
+              // RESUME
               {
                 type: "conditional",
-                conditions: [
-                  { condition: "state", entity: ent("status"), state: "paused" },
-                ],
-                chip: {
-                  type: "entity",
-                  entity: ent("resume_btn"),
-                  icon: "mdi:play",
-                  content_info: "none",
-                  tap_action: { action: "toggle" },
-                  card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-green),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" },
-                },
+                conditions: [{ condition: "state", entity: status_entity, state: "paused" }],
+                chip: { type: "entity", entity: resume_btn_entity, icon: "mdi:play", content_info: "none", tap_action: { action: "toggle" }, card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-green),0.9); --icon-color: rgb(var(--rgb-white)); border:none}" } },
               },
-
-              // --- STOP: only when in any active/paused state (never off/unknown) ---
+              // STOP (visible during self-test)
               {
                 type: "conditional",
-                conditions: [
-                  {
-                    condition: "or",
-                    conditions: [
-                      { condition: "state", entity: ent("status"), state: "printing" },
-                      { condition: "state", entity: ent("status"), state: "resuming" },
-                      { condition: "state", entity: ent("status"), state: "pausing" },
-                      { condition: "state", entity: ent("status"), state: "paused" },
-                    ],
-                  },
-                ],
-                chip: {
-                  type: "entity",
-                  entity: ent("stop_btn"),
-                  icon: "mdi:stop",
-                  content_info: "none",
-                  tap_action: { action: "toggle" },
-                  card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-red),0.95); --icon-color: rgb(var(--rgb-white)); border:none}" },
-                },
+                conditions: [{ condition: "or", conditions: [
+                  { condition: "state", entity: status_entity, state: "printing" },
+                  { condition: "state", entity: status_entity, state: "paused" },
+                  { condition: "state", entity: status_entity, state: "self-testing" },
+                ] }],
+                chip: { type: "entity", entity: stop_btn_entity, icon: "mdi:stop", content_info: "none", tap_action: { action: "toggle" }, card_mod: { style: "ha-card{--chip-background: rgba(var(--rgb-red),0.95); --icon-color: rgb(var(--rgb-white)); border:none}" } },
               },
-
-              // --- LIGHT: hide completely when printer is off/unknown ---
+              // SPACER
               {
-                type: "conditional",
-                conditions: [
-                  { condition: "state_not", entity: ent("status"), state: "off" },
-                  { condition: "state_not", entity: ent("status"), state: "unknown" },
-                ],
-                chip: {
-                  type: "template",
-                  entity: ent("light"),
-                  icon: "mdi:lightbulb",
-                  content: "",
-                  icon_color: `
-                    {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-                    {% if st in ['off','unknown'] %}lightgrey
-                    {% elif is_state('${ent("light")}','on') %}orange
-                    {% else %}lightgrey{% endif %}
+                type: "template",
+                content: "&nbsp;",
+                card_mod: { style: `ha-card{ border:none !important; background: none !important; box-shadow: none !important; visibility: hidden; pointer-events: none; min-width: 42px; height: var(--chip-height, 40px); margin: 0; padding: 0; }`},
+              },
+              // --- THE FIX: Bypassing the conditional chip ---
+              // This chip is now a simple template chip that is ALWAYS rendered.
+              // Its visibility is controlled by the CSS 'display' property inside card_mod.
+              {
+                type: "template",
+                entity: light_entity,
+                icon: "mdi:lightbulb",
+                content: "",
+                tap_action: { action: "toggle" },
+                card_mod: {
+                  style: `
+                    {% set st = (states('${status_entity}') or 'unknown')|lower %}
+                    ha-card {
+                      /* This is the new visibility logic */
+                      display: {% if st in ['off', 'unknown'] %} none {% else %} flex {% endif %};
+
+                      border: none !important;
+                      {% if is_state('${light_entity}','on') %}
+                        --chip-background: rgba(var(--rgb-yellow),0.95);
+                        --icon-color: rgb-orange;
+                      {% else %}
+                        --chip-background: rgba(var(--rgb-grey),0.35);
+                        --icon-color: black;
+                      {% endif %}
+                    }
                   `,
-                  tap_action: { action: "toggle" },
-                  card_mod: {
-                    style: `
-                      ha-card{
-                        border:none;
-                        {% set st = (states('${ent("status")}') or 'unknown')|lower %}
-                        {% if st in ['off','unknown'] -%}
-                          --chip-background: rgba(var(--rgb-grey),0.35);
-                          pointer-events: none; opacity: 0.6;
-                        {%- elif is_state('${ent("light")}','on') -%}
-                          --chip-background: rgba(var(--rgb-yellow),0.95);
-                        {%- else -%}
-                          --chip-background: rgba(var(--rgb-grey),0.35);
-                        {%- endif %}
-                      }
-                    `,
-                  },
                 },
               },
             ],
-            card_mod: {
-              style: "ha-card{ --ha-card-border-width: 0; padding: 24px 28px 0 0; --chip-spacing: 8px; }",
-            },
+            card_mod: { style: "ha-card{ --ha-card-border-width: 0; padding: 24px 28px 0 0; --chip-spacing: 8px; }" },
           },
         ],
       },
-
-      // Telemetry row
+      // Telemetry row (unchanged)
       {
         type: "custom:mushroom-chips-card",
         alignment: "center",
         chips: [
-          { type: "template", icon: "mdi:printer-3d-nozzle-heat", content: `{{ (states('${ent("nozzle")}')|float(0))|round(1) }} °C` },
-          { type: "template", icon: "mdi:heating-coil",           content: `{{ (states('${ent("bed")}')|float(0))|round(1) }} °C` },
-          { type: "template", icon: "mdi:thermometer",            content: `{{ (states('${ent("box")}')|float(0))|round(1) }} °C` },
+          { type: "template", icon: "mdi:printer-3d-nozzle-heat", content: `{{ (states('${nozzle_entity}')|float(0))|round(1) }} °C` },
+          { type: "template", icon: "mdi:heating-coil",           content: `{{ (states('${bed_entity}')|float(0))|round(1) }} °C` },
+          { type: "template", icon: "mdi:thermometer",            content: `{{ (states('${box_entity}')|float(0))|round(1) }} °C` },
           { type: "template", icon: "mdi:progress-clock",         content: time_fmt },
-          { type: "template", icon: "mdi:layers-triple",          content: `L {{ states('${ent("layer")}') }}/{{ states('${ent("total_layers")}') }}` },
+          { type: "template", icon: "mdi:layers-triple",          content: `{{ states('${layer_entity}') }}/{{ states('${total_layers_entity}') }}` },
         ],
-        card_mod: {
-          style: `
-            ha-card{ --ha-card-border-width: 0; padding: 6px 8px 10px 8px; --chip-spacing: 8px; }
-            mushroom-chip-set { display: flex; justify-content: center; flex-wrap: wrap; }
-            mushroom-chip { flex: 1 0 120px; max-width: 160px; }
-          `,
-        },
+        card_mod: { style: `ha-card{ --ha-card-border-width: 0; padding: 6px 8px 10px 8px; --chip-spacing: 4px; } mushroom-chip-set { display: flex; justify-content: center; flex-wrap: wrap; } mushroom-chip { flex: 1 0 120px; max-width: 160px; }` },
       },
     ],
     card_mod: { style: "ha-card{border-radius:16px; overflow:hidden}" },
@@ -261,14 +205,24 @@ class K1CPrinterCard extends HTMLElement {
   getCardSize() { return 3; }
 
   static getConfigElement() { return document.createElement(EDITOR_TAG); }
-  static getStubConfig() { return { ...DEFAULT_ENTITIES }; }
+  static getStubConfig() {
+    return {
+      name: "3D Printer",
+      camera: "", status: "", progress: "", time_left: "",
+      nozzle: "", bed: "", box: "",
+      layer: "", total_layers: "",
+      light: "", pause_btn: "", resume_btn: "", stop_btn: "",
+    };
+  }
 }
 customElements.define(CARD_TAG, K1CPrinterCard);
 
-// ---------- Lightweight GUI editor ----------
 class K1CPrinterCardEditor extends HTMLElement {
   set hass(hass) { this._hass = hass; if (this._form) this._form.hass = hass; }
-  setConfig(config) { this._cfg = { ...DEFAULT_ENTITIES, ...(config || {}) }; this._render(); }
+  setConfig(config) {
+    this._cfg = { ...(config || {}) };
+    this._render();
+  }
 
   connectedCallback() { if (!this._root) { this._root = this.attachShadow({ mode: "open" }); this._render(); } }
 
@@ -281,22 +235,22 @@ class K1CPrinterCardEditor extends HTMLElement {
       this._form.addEventListener("value-changed", this._onChange.bind(this));
     }
     this._form.schema = [
-      { name: "Name:",         selector: { text: {} }, label: "Printer Name" },
-      { name: "Camera:",      selector: { entity: { domain: "camera" } }, label: "Camera" },
-      { name: "Status:",      selector: { entity: { domain: "sensor" } }, label: "Print Status" },
-      { name: "Progress:",    selector: { entity: { domain: "sensor" } }, label: "Print Progress (%)" },
-      { name: "TIme left:",   selector: { entity: { domain: "sensor" } }, label: "Time Left (seconds)" },
-      { name: "Nozzle temperature:",      selector: { entity: { domain: "sensor" } }, label: "Nozzle Temp" },
-      { name: "Bed temperature:",         selector: { entity: { domain: "sensor" } }, label: "Bed Temp" },
-      { name: "Enclosure temperature:",         selector: { entity: { domain: "sensor" } }, label: "Box Temp" },
-      { name: "Current layer:",       selector: { entity: { domain: "sensor" } }, label: "Working Layer" },
-      { name: "Total layers:",selector: { entity: { domain: "sensor" } }, label: "Total Layers" },
-      { name: "Light:",       selector: { entity: { domain: "switch" } }, label: "Light Switch" },
-      { name: "Pause button:",   selector: { entity: { domain: "button" } }, label: "Pause Button" },
-      { name: "Resume button:",  selector: { entity: { domain: "button" } }, label: "Resume Button" },
-      { name: "Stop button:",    selector: { entity: { domain: "button" } }, label: "Stop Button" },
+      { name: "name",         label: "Printer Name", selector: { text: {} } },
+      { name: "camera",       label: "Camera", selector: { entity: { domain: "camera" } } },
+      { name: "status",       label: "Print Status Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "progress",     label: "Print Progress Sensor (%)", selector: { entity: { domain: "sensor" } } },
+      { name: "time_left",    label: "Time Left Sensor (seconds)", selector: { entity: { domain: "sensor" } } },
+      { name: "nozzle",       label: "Nozzle Temperature Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "bed",          label: "Bed Temperature Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "box",          label: "Enclosure Temperature Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "layer",        label: "Current Layer Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "total_layers", label: "Total Layers Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "light",        label: "Light Switch", selector: { entity: { domain: "switch" } } },
+      { name: "pause_btn",    label: "Pause Button", selector: { entity: { domain: "button" } } },
+      { name: "resume_btn",   label: "Resume Button", selector: { entity: { domain: "button" } } },
+      { name: "stop_btn",     label: "Stop Button", selector: { entity: { domain: "button" } } },
     ];
-    this._form.data = this._cfg || DEFAULT_ENTITIES;
+    this._form.data = this._cfg;
   }
 
   _onChange(ev) {
@@ -309,11 +263,3 @@ class K1CPrinterCardEditor extends HTMLElement {
   }
 }
 customElements.define(EDITOR_TAG, K1CPrinterCardEditor);
-
-// Card picker registration
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: CARD_TAG,
-  name: "K1C / Creality Printer Card",
-  description: "Compact Mushroom + card-mod + stack-in-card preset for Creality Klipper printers.",
-});

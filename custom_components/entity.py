@@ -48,7 +48,17 @@ class K1CEntity(CoordinatorEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.available
+        # Keep entities available so we can surface zeroed values when off/unknown
+        return True
+
+    # Helper used by sensors to decide zeroing
+    def _should_zero(self) -> bool:
+        """
+        Helper to determine if an entity should show a zero/off/none value.
+        """
+        coord = self.coordinator
+        # Returns True if connection is lost OR if the power switch is off.
+        return (not coord.available) or coord.power_is_off()
 
     @property
     def device_info(self) -> DeviceInfo:

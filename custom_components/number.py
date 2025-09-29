@@ -54,6 +54,8 @@ class PrintTuningPercent(K1CEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return None
         d = self.coordinator.data
         v = d.get("curFeedratePct")
         if v is None:
@@ -85,6 +87,8 @@ class NozzleTargetNumber(K1CEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return None
         v = self.coordinator.data.get("targetNozzleTemp")
         try:
             return float(v) if v is not None else None
@@ -111,6 +115,8 @@ class BedTargetNumber(K1CEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return None
         v = self.coordinator.data.get(f"targetBedTemp{self._idx}")
         try:
             return float(v) if v is not None else None
@@ -137,6 +143,8 @@ class _FanPctNumber(K1CEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._should_zero():
+            return None
         v = self.coordinator.data.get(self._read_field)
         try:
             return float(v) if v is not None else None

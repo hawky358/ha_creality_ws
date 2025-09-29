@@ -27,6 +27,8 @@ class K1CSimpleSwitch(K1CEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
+        if self._should_zero():
+            return False
         val = self.coordinator.data.get(self._field)
         return bool(val) if val is not None else False
 

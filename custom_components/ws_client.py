@@ -102,6 +102,12 @@ class K1CClient:
         except asyncio.TimeoutError:
             return False
 
+    async def reconnect(self):
+        """Force a reconnection to the WebSocket server."""
+        _LOGGER.info("Re-establishing WebSocket connection to retrieve latest state.")
+        await self.stop()
+        await self.start()
+
     # ---------- connectivity loop ----------
     def _resolve_host(self) -> str:
         try:
