@@ -11,6 +11,10 @@
   "loggers": ["custom_components.ha_creality_ws"],
   "zeroconf": [
     { "type": "_http._tcp.local.", "name": "*Creality*" },
-    { "type": "_workstation._tcp.local.", "name": "*Creality*" }
+    { "type": "_workstation._tcp.local.", "name": "*Creality*" },
+    { "type": "_http._tcp.local.", "name": "*K1*" },
+    { "type": "_workstation._tcp.local.", "name": "*K1*" },
+    { "type": "_http._tcp.local.", "name": "*K2*" },
+    { "type": "_workstation._tcp.local.", "name": "*K2*" }
   ]
 }
