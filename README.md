@@ -76,16 +76,20 @@ To enable the `Off` state and have sensors zero-out when the printer is powered 
 
 ## Lovelace Card
 
-This repository includes a **ready-to-use card**: `k1c_printer_card.js`.
+This repository includes a **ready-to-use card** that is automatically installed by HACS.
 
 ### Installation
 
-The integration **automatically** copies the `k1c_printer_card.js` file to the correct location (`/config/www/ha_creality_ws/k1c_printer_card.js`). You only need to add it to your Lovelace resources.
+When you install the **Creality WebSocket Integration** via HACS, HACS will automatically detect `k1c_printer_card.js` and ask if you want to add it to your Lovelace dashboards.
 
+1.  **Click "Add to Lovelace"** on the dialog that HACS shows after installation.
+2.  That's it! The resource is now managed by HACS.
+
+If you missed the dialog, you can add it manually:
 1.  Navigate to **Settings → Dashboards**.
 2.  Click the three-dots menu at the top right and select **Resources**.
 3.  Click **Add Resource**.
-4.  Enter the URL: `/local/ha_creality_ws/k1c_printer_card.js` and select **JavaScript Module** as the type.
+4.  Enter the URL: `/hacsfiles/ha-creality-ws/k1c_printer_card.js` and select **JavaScript Module**.
 
 ### Card Usage
 

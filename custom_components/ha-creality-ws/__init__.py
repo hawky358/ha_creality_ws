@@ -22,22 +22,6 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[str] = ["sensor", "switch", "camera", "button", "number"]
 
 
-def _copy_frontend(hass: HomeAssistant) -> None:
-    """Copy card assets to /local/ha_creality_ws/."""
-    try:
-        target = hass.config.path("www", "ha_creality_ws")
-        os.makedirs(target, exist_ok=True)
-        pkg = resources.files(__package__) / "frontend"
-        for name in ("k1c_printer_card.js",):
-            with resources.as_file(pkg / name) as src:
-                shutil.copy2(str(src), os.path.join(target, name))
-        _LOGGER.debug(
-            "ha_creality_ws: copied /local/ha_creality_ws/k1c_printer_card.js"
-        )
-    except Exception as exc:
-        _LOGGER.warning("ha_creality_ws: failed to copy frontend file: %s", exc)
-
-
 async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Apply options (power switch) to the coordinator at runtime."""
     coord: K1CCoordinator = hass.data[DOMAIN][entry.entry_id]
@@ -62,8 +46,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
     entry.async_on_unload(entry.add_update_listener(_options_updated))
-
-    await hass.async_add_executor_job(_copy_frontend, hass)
 
     # periodic stale check — flip to 'unknown' when no frames for STALE_AFTER_SECS
     def _interval_check(_now) -> None:
