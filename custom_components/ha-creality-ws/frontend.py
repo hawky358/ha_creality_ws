@@ -2,6 +2,7 @@
 import logging
 from pathlib import Path
 
+# --- NEW IMPORT ---
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.lovelace import LovelaceData
 from homeassistant.core import HomeAssistant
@@ -21,16 +22,20 @@ class CrealityCardRegistration:
     async def async_register(self):
         """Register the card with Lovelace."""
         
-        # 1. Register a static path to serve the card file
         frontend_path = Path(__file__).parent / "frontend"
+        
+        # --- THIS IS THE CORRECTED CODE BLOCK ---
         try:
-            self.hass.http.register_static_path(URL_BASE, str(frontend_path))
+            # Use the correct async method which takes a list of StaticPathConfig
+            await self.hass.http.async_register_static_paths([
+                StaticPathConfig(URL_BASE, str(frontend_path), cache_headers=False)
+            ])
             _LOGGER.debug("Registered static path %s for K1C card", URL_BASE)
         except ValueError:
             # Path is already registered, which is fine
             _LOGGER.debug("Static path %s already registered", URL_BASE)
 
-        # 2. Register the card with the Lovelace resources
+        # The rest of the registration logic is correct
         lovelace: LovelaceData | None = self.hass.data.get("lovelace")
         if lovelace is None or lovelace.mode != "storage":
             return
