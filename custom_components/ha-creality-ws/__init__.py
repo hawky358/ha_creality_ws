@@ -67,9 +67,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # periodic stale check — flip to 'unknown' when no frames for STALE_AFTER_SECS
     def _interval_check(_now) -> None:
+        """
+        Periodically checks for a stale connection AND forces a general state update.
+        This ensures that missed events (like a power switch turning off) are eventually caught.
+        """
+        # First, check for WebSocket staleness. This updates the `available` property.
         coord.check_stale()
 
+        # Second, and most importantly, force ALL entities to re-evaluate their state.
+        # This ensures they will re-run their logic against the latest `power_is_off()`
+        # and `available` properties, catching any state that was missed between events.
+        coord.async_update_listeners()
+
     hass.data[DOMAIN].setdefault("_intervals", [])
+    # The interval is already set to a reasonable value (e.g., every 5 seconds)
     cancel = async_track_time_interval(
         hass, _interval_check, timedelta(seconds=max(5, STALE_AFTER_SECS // 3))
     )
