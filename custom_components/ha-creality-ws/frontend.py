@@ -2,7 +2,6 @@
 import logging
 from pathlib import Path
 
-# --- NEW IMPORT ---
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.lovelace import LovelaceData
 from homeassistant.core import HomeAssistant
@@ -24,29 +23,32 @@ class CrealityCardRegistration:
         
         frontend_path = Path(__file__).parent / "frontend"
         
-        # --- THIS IS THE CORRECTED CODE BLOCK ---
         try:
-            # Use the correct async method which takes a list of StaticPathConfig
             await self.hass.http.async_register_static_paths([
                 StaticPathConfig(URL_BASE, str(frontend_path), cache_headers=False)
             ])
             _LOGGER.debug("Registered static path %s for K1C card", URL_BASE)
         except ValueError:
-            # Path is already registered, which is fine
             _LOGGER.debug("Static path %s already registered", URL_BASE)
 
-        # The rest of the registration logic is correct
         lovelace: LovelaceData | None = self.hass.data.get("lovelace")
         if lovelace is None or lovelace.mode != "storage":
             return
 
-        resources = lovelace.resources
-        if not await resources.async_get_info(CARD_URL):
-            _LOGGER.info("Registering K1C printer card with Lovelace")
-            await resources.async_create_item({
+        # --- THIS IS THE CORRECTED LOGIC ---
+        # Get all registered resources and check if our card's URL is present.
+        resources = lovelace.resources.async_items()
+        card_registered = any(resource["url"] == CARD_URL for resource in resources)
+
+        if not card_registered:
+            _LOGGER.info("Registering K1C printer card with Lovelace: %s", CARD_URL)
+            await lovelace.resources.async_create_item({
                 "res_type": "module",
                 "url": CARD_URL,
             })
+        else:
+            _LOGGER.debug("K1C printer card is already registered.")
+
 
     async def async_unregister(self):
         """Unregister the card from Lovelace."""
@@ -54,8 +56,14 @@ class CrealityCardRegistration:
         if lovelace is None or lovelace.mode != "storage":
             return
 
-        resources = lovelace.resources
-        if await resources.async_get_info(CARD_URL):
+        # --- THIS IS THE CORRECTED UNREGISTER LOGIC ---
+        # Find the specific resource ID to delete.
+        resource_id_to_delete = None
+        for resource in lovelace.resources.async_items():
+            if resource["url"] == CARD_URL:
+                resource_id_to_delete = resource["id"]
+                break
+        
+        if resource_id_to_delete:
             _LOGGER.info("Unregistering K1C printer card from Lovelace")
-            resource_id = [item["id"] for item in resources.async_items() if item["url"] == CARD_URL][0]
-            await resources.async_delete_item(resource_id)
+            await lovelace.resources.async_delete_item(resource_id_to_delete)
