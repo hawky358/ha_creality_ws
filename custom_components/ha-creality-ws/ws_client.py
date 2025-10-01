@@ -39,7 +39,7 @@ def _coerce_numbers(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-class K1CClient:
+class KClient:
     """Resilient WS client with backoff, heartbeat 'ok', periodic GETs, and staleness tracking."""
 
     def __init__(self, host: str, on_message: OnMessage):
@@ -66,7 +66,7 @@ class K1CClient:
         if self._task:
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._loop(), name="k1c-ws-loop")
+        self._task = asyncio.create_task(self._loop(), name="K-ws-loop")
 
     async def stop(self) -> None:
         self._stop.set()
@@ -120,19 +120,19 @@ class K1CClient:
         while not self._stop.is_set():
             try:
                 url = self._url()
-                _LOGGER.debug("K1C WS connecting: %s", url)
+                _LOGGER.debug("K WS connecting: %s", url)
                 # Disable library pings; we do app-level heartbeat + periodic GETs.
                 async with websockets.connect(url, ping_interval=None) as ws:
                     self._ws = ws
                     self._ws_ready.set()  # signal connected
-                    _LOGGER.info("K1C WS connected to %s", url)
+                    _LOGGER.info("K WS connected to %s", url)
                     self._connected_once.set()
                     backoff = RETRY_MIN_BACKOFF
                     self._last_rx = time.monotonic()
 
                     # background tasks
-                    self._hb_task = asyncio.create_task(self._heartbeat(), name="k1c-ws-heartbeat")
-                    self._tick_task = asyncio.create_task(self._periodic_gets(), name="k1c-ws-ticker")
+                    self._hb_task = asyncio.create_task(self._heartbeat(), name="K-ws-heartbeat")
+                    self._tick_task = asyncio.create_task(self._periodic_gets(), name="K-ws-ticker")
 
                     async for raw in ws:
                         self._last_rx = time.monotonic()
@@ -168,14 +168,14 @@ class K1CClient:
                             try:
                                 await self._on_message(dict(self._state))
                             except Exception:
-                                _LOGGER.exception("K1C on_message failed")
+                                _LOGGER.exception("K on_message failed")
                         else:
-                            _LOGGER.debug("K1C WS unexpected frame type: %r", type(payload))
+                            _LOGGER.debug("K WS unexpected frame type: %r", type(payload))
 
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                _LOGGER.warning("K1C WS connection error: %s", exc)
+                _LOGGER.warning("K WS connection error: %s", exc)
             finally:
                 # cleanup on disconnect
                 for t in (self._hb_task, self._tick_task):
@@ -195,7 +195,7 @@ class K1CClient:
                 pass
             backoff = min(sleep_for, RETRY_MAX_BACKOFF)
 
-        _LOGGER.debug("K1C WS loop exited")
+        _LOGGER.debug("K WS loop exited")
 
     async def _heartbeat(self):
         """Benign probe on silent connects and a WS-level ping keeps NAT/state alive."""
@@ -216,7 +216,7 @@ class K1CClient:
                     pong = await ws.ping()
                     await asyncio.wait_for(pong, timeout=5.0)
                 except Exception:
-                    _LOGGER.debug("K1C WS ping failed; forcing reconnect")
+                    _LOGGER.debug("K WS ping failed; forcing reconnect")
                     try:
                         await ws.close()
                     except Exception:

@@ -12,7 +12,7 @@ from homeassistant.helpers.event import (
 )
 
 from .const import DOMAIN, STALE_AFTER_SECS, CONF_POWER_SWITCH
-from .coordinator import K1CCoordinator
+from .coordinator import KCoordinator
 from .frontend import CrealityCardRegistration  # <-- NEW IMPORT
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Creality integration from a config entry."""
     host: str = entry.data["host"]
     power_switch = entry.options.get(CONF_POWER_SWITCH)
-    coord = K1CCoordinator(hass, host=host, power_switch=power_switch)
+    coord = KCoordinator(hass, host=host, power_switch=power_switch)
 
     try:
         await coord.async_start()
@@ -78,7 +78,7 @@ async def options_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    coord: K1CCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coord: KCoordinator = hass.data[DOMAIN][entry.entry_id]
     await coord.async_stop()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

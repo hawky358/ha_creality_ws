@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
 
-from .entity import K1CEntity
+from .entity import KEntity
 from .const import DOMAIN
 
 # Only keep switches that make sense as binary (e.g., light).
@@ -14,11 +14,11 @@ MAP = {
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
-    ents = [K1CSimpleSwitch(coord, name, field, key) for key, (name, field) in MAP.items()]
+    ents = [KSimpleSwitch(coord, name, field, key) for key, (name, field) in MAP.items()]
     async_add_entities(ents)
 
 
-class K1CSimpleSwitch(K1CEntity, SwitchEntity):
+class KSimpleSwitch(KEntity, SwitchEntity):
     _attr_icon = "mdi:toggle-switch"
 
     def __init__(self, coordinator, name: str, field: str, unique_id: str):
