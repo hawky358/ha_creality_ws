@@ -1,6 +1,5 @@
-/* K / Creality Printer Card — dependency-free, HA typography */
-const CARD_TAG = "K-printer-card";
-const EDITOR_TAG = "K-printer-card-editor";
+const CARD_TAG = "k-printer-card";
+const EDITOR_TAG = "k-printer-card-editor";
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const mdi = (name) => `mdi:${name}`;
@@ -315,8 +314,8 @@ try {
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: CARD_TAG,
-    name: "Creality Printer Card (No-deps)",
-    description: "Standalone card for Creality K-Series printers (HA fonts)",
+    name: "Creality Printer Card",
+    description: "Standalone card for Creality K-Series printers",
     preview: true,
   });
 } catch (_) {}
