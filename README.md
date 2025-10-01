@@ -1,38 +1,19 @@
 # Creality WebSocket Integration for Home Assistant
 
-This custom [Home Assistant](https://www.home-assistant.io/) integration provides **native, low-latency WebSocket control and telemetry** for Creality K-series and compatible 3D printers. It exposes the printer’s live state, sensors, controls, and camera stream to Home Assistant and includes a ready-to-use Lovelace card for printer monitoring.
+This custom [Home Assistant](https://www.home-assistant.io/) integration provides **native, low-latency WebSocket control and telemetry** for Creality K-series and compatible 3D printers. It exposes live state, sensors, controls, and a camera stream. A **standalone Lovelace card** (no external card dependencies) is included.
 
 ---
 
 ## Features
 
-*   **Direct WebSocket connection** to the printer, no cloud required.
-*   **Local push updates** (no polling).
-*   **Rich Status Reporting**: Provides detailed printer states like `Idle`, `Printing`, `Paused`, `Stopped`, `Completed`, `Error`, and even `Self-Testing`.
-*   **Optional Power Switch Integration**: Can monitor a separate `switch` entity (like a smart plug) to accurately determine the printer's `Off` state and reset all sensors to zero.
-*   **Comprehensive Entities**:
-    *   Status, progress, job time, layers, object count
-    *   Temperatures (bed, nozzle, chamber)
-    *   Speeds, flow rate, fans
-    *   Current position (X/Y/Z)
-    *   Current object / excluded objects
-*   **Controls**:
-    *   Pause, Resume, Stop print (Stop is available during calibration)
-    *   Light toggle
-    *   Speed/flow tuning
-    *   Temperature and fan setpoints
-*   **MJPEG camera proxy** with relay via Home Assistant.
-*   **Custom Lovelace card** (`k1c_printer_card.js`) with context-aware controls, temperatures, progress ring, and printer info.
-
----
-
-## Status / Testing
-
-⚠️ This integration has been **tested only on Creality K1C**.
-It may work on other **Creality Klipper-based printers with the stock web interface**, but this is unverified.
-
-👉 **Looking for testers!**
-If you own another supported model (e.g. K1, K1 Max), please install this integration and report results by opening an issue or PR on GitHub.
+* **Direct WebSocket** connection (local, no cloud).
+* **Push updates**; no polling.
+* **States:** `idle`, `printing`, `paused`, `stopped`, `completed`, `error`, `self-testing`.
+* **Optional power switch binding** to a `switch` entity for accurate “Off” handling.
+* **Entities:** status, progress, time left, temperatures (nozzle/bed/chamber), current layer/total layers, etc.
+* **Controls:** pause, resume, stop, light toggle.
+* **Camera proxy** (MJPEG) via Home Assistant.
+* **Lovelace card**: dependency-free, uses HA fonts, progress ring, contextual chips, telemetry pills.
 
 ---
 
@@ -40,64 +21,102 @@ If you own another supported model (e.g. K1, K1 Max), please install this integr
 
 ### HACS (recommended)
 
-1.  Add this repository as a [custom repository](https://hacs.xyz/docs/faq/custom_repositories/) in HACS (`Integration` type).
-2.  Install **Creality WebSocket Integration**.
-3.  Restart Home Assistant.
+1. Add this repo as a [custom repository](https://hacs.xyz/docs/faq/custom_repositories/) (type: **Integration**).
+2. Install **Creality WebSocket Integration**.
+3. **Restart** Home Assistant.
 
 ### Manual
 
-1.  Copy the `custom_components/ha_creality_ws` directory to `<config>/custom_components/`.
-2.  Restart Home Assistant.
+1. Copy `custom_components/ha_creality_ws` into `<config>/custom_components/`.
+2. **Restart** Home Assistant.
 
 ---
 
 ## Configuration
 
-### 1. Add the Integration
+### 1) Add the integration (UI)
 
-This integration uses a **config flow** (UI setup).
+1. **Settings → Devices & Services → Add Integration**
+   Select **Creality WebSocket Integration**.
+2. Enter printer hostname/IP and a friendly name.
+3. Zeroconf discovery is supported; if mDNS works on your network, it will appear automatically.
 
-1.  Navigate to **Settings → Devices & Services → Add Integration**.
-2.  Search for **Creality WebSocket Integration**.
-3.  Enter your printer’s hostname or IP and give it a friendly name.
+### 2) Optional: bind a power switch
 
-Zeroconf discovery is supported; the printer should appear automatically if mDNS is working on your network.
+If your printer power is controlled by a smart plug/switch, bind it so the integration can assert `off` and zero the sensors.
 
-### 2. Configure the Power Switch (Optional)
-
-To enable the `Off` state and have sensors zero-out when the printer is powered down, you must link the integration to a power monitoring switch (e.g., a smart plug).
-
-1.  Navigate to **Settings → Devices & Services**.
-2.  Find your Creality printer integration and click **Configure**.
-3.  Use the dropdown menu to select the `switch` entity that controls your printer's power.
-4.  Click **Submit**. The integration will now use this switch as the source of truth for its power state.
+* **Settings → Devices & Services →** your printer **→ Configure**
+  Choose the `switch` entity. Submit.
 
 ---
 
-## Lovelace Card
+## Lovelace Card (Zero-dependency)
 
-This repository includes a **ready-to-use card** that is automatically installed by HACS.
+This repository **bundles** a standalone card (no `mushroom`, no `stack-in-card`, no `card-mod`). The integration copies the file to `/config/www/ha_creality_ws/k_printer_card.js` on setup and **auto-registers** the Lovelace resource **in storage mode**.
 
-### Installation
+### Resource registration
 
-When you install the **Creality WebSocket Integration** via HACS, HACS will automatically detect `k1c_printer_card.js` and ask if you want to add it to your Lovelace dashboards.
+* **Storage mode (default)**
+  The integration registers the resource automatically:
 
-1.  **Click "Add to Lovelace"** on the dialog that HACS shows after installation.
-2.  That's it! The resource is now managed by HACS.
+  ```
+  /local/ha_creality_ws/k_printer_card.js   (type: module)
+  ```
 
-If you missed the dialog, you can add it manually:
-1.  Navigate to **Settings → Dashboards**.
-2.  Click the three-dots menu at the top right and select **Resources**.
-3.  Click **Add Resource**.
-4.  Enter the URL: `/hacsfiles/ha-creality-ws/k1c_printer_card.js` and select **JavaScript Module**.
+  If you ever remove/re-add the integration or migrate dashboards, verify it under:
+  **Settings → Dashboards → ⋮ → Resources**.
 
-### Card Usage
+* **YAML mode**
+  Add this to your configuration:
 
-Add the card to your dashboard using the UI or YAML.
+  ```yaml
+  lovelace:
+    mode: yaml
+    resources:
+      - url: /local/ha_creality_ws/k_printer_card.js
+        type: module
+  ```
+
+  (Make sure the file exists at `<config>/www/ha_creality_ws/k_printer_card.js`. The integration deploys it; if it’s missing, restart HA once.)
+
+### Forcing Storage mode (if you previously used YAML)
+
+If you want to switch to storage mode explicitly:
 
 ```yaml
-type: custom:k1c-printer-card
-name: "K1C Printer"  # This name will appear on the card
+# configuration.yaml
+lovelace:
+  mode: storage
+```
+
+Restart HA after changing this.
+
+### **Hard refresh is required after first install/update**
+
+Lovelace caches frontend resources aggressively. After installing/updating the card or integration:
+
+* Desktop: **Ctrl+F5** (Windows/Linux), **⌘+Shift+R** (macOS)
+* Mobile app: **App Settings → Reload resources** or force close + reopen.
+
+If you still see stale UI, append a cache-buster query once:
+
+```
+/local/ha_creality_ws/k_printer_card.js?v=1
+```
+
+Then remove the `?v=` the next time.
+
+---
+
+## Card Usage
+
+The card’s element tag is **`custom:k-printer-card`**.
+
+Add via UI (Manual card) or YAML:
+
+```yaml
+type: custom:k-printer-card
+name: "K1C Printer"
 camera: camera.k1c_printer_camera
 status: sensor.k1c_print_status
 progress: sensor.k1c_print_progress
@@ -113,29 +132,39 @@ resume_btn: button.k1c_resume_print
 stop_btn: button.k1c_stop_print
 ```
 
+**Behavior:**
+
+* Header icon color + conic progress ring reflect state and progress.
+* Chips:
+
+  * **Pause** shown when `printing|resuming|pausing`.
+  * **Resume** shown when `paused`.
+  * **Stop** shown when `printing|paused|self-testing`.
+  * **Light** toggles the configured `switch`/`light` entity.
+* Tapping the header opens **more-info** for `camera` (fallbacks: `status`, `progress`).
+
 ---
 
-## Entities
+## Troubleshooting
 
-Entities are created dynamically. The `<name>` is based on the name you provided during setup.
-
-*   `sensor.<name>_print_status`
-*   `sensor.<name>_print_progress`
-*   `sensor.<name>_print_time_left`
-*   ...and many more. See the integration's device page for a full list.
-*   `camera.<name>_camera`
+* **“Configuration error” in picker or blank card**
+  Hard refresh Lovelace. Verify the resource exists (see *Resource registration*). Ensure the element type is `custom:k-printer-card` (not the previous tag).
+* **Controls do nothing**
+  Confirm the `pause_btn`, `resume_btn`, `stop_btn` entities exist and are `button.*`. The card calls `button.press`.
+  Confirm the light entity domain is `switch` or `light`.
+* **Wrong states when powered off**
+  Set the **Power Switch** in the integration’s Configure dialog.
+* **Resource missing in storage mode**
+  Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
 
 ---
 
-## Development & Troubleshooting
+## Status / Testing
 
-*   This integration is designed for **local push updates** and supports multiple printers.
-*   If entities are `unavailable` or `unknown`, first check that the printer is powered on and connected to the network.
-*   If the state appears incorrect, verify the **Power Switch** is set correctly in the integration's **Configure** menu.
-*   For deeper issues, check **Logs** for entries related to `custom_components.ha_creality_ws`.
+Currently verified on **Creality K1C**. Other K-series models may work but are unverified.
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT. See `LICENSE`.
