@@ -6,14 +6,14 @@ from homeassistant.components.camera import Camera
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import MJPEG_URL_TEMPLATE, DOMAIN
-from .entity import K1CEntity
+from .entity import KEntity
 
 
-class CrealityMjpegCamera(K1CEntity, Camera):
+class CrealityMjpegCamera(KEntity, Camera):
     """MJPEG proxy camera attached to the printer device."""
 
     def __init__(self, coordinator, url: str) -> None:
-        K1CEntity.__init__(self, coordinator, "Printer Camera", "camera")
+        KEntity.__init__(self, coordinator, "Printer Camera", "camera")
         Camera.__init__(self)
         self._url = url
 

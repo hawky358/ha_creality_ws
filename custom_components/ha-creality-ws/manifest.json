@@ -1,7 +1,7 @@
 {
   "domain": "ha_creality_ws",
   "name": "Creality WebSocket Integration",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "documentation": "https://github.com/3dg1luk43/ha-creality-ws",
   "issue_tracker": "https://github.com/3dg1luk43/ha-creality-_workstation/issues",
   "requirements": [],
@@ -11,6 +11,10 @@
   "loggers": ["custom_components.ha_creality_ws"],
   "zeroconf": [
     { "type": "_http._tcp.local.", "name": "*Creality*" },
-    { "type": "_workstation._tcp.local.", "name": "*Creality*" }
+    { "type": "_workstation._tcp.local.", "name": "*Creality*" },
+    { "type": "_http._tcp.local.", "name": "*K1*" },
+    { "type": "_workstation._tcp.local.", "name": "*K1*" },
+    { "type": "_http._tcp.local.", "name": "*K2*" },
+    { "type": "_workstation._tcp.local.", "name": "*K2*" }
   ]
 }

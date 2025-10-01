@@ -35,7 +35,7 @@ def _parse_model_version(s: str | None) -> tuple[str | None, str | None]:
     return (hw, sw)
 
 
-class K1CEntity(CoordinatorEntity):
+class KEntity(CoordinatorEntity):
     """Base entity for Creality K-series over WebSocket."""
 
     _attr_has_entity_name = True

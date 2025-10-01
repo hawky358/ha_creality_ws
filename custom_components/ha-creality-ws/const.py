@@ -17,7 +17,7 @@ WS_URL_TEMPLATE = "ws://{host}:" + str(WS_PORT)
 MJPEG_URL_TEMPLATE = "http://{host}:" + str(MJPEG_PORT) + "/?action=stream"
 
 MFR = "Creality"
-MODEL = "K1C"
+MODEL = "K"
 
 # ---- Health / reconnect / keepalive ----
 STALE_AFTER_SECS = 5

@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 ...
-from .entity import K1CEntity
+from .entity import KEntity
 from .const import DOMAIN
 
 
@@ -31,7 +31,7 @@ except Exception:  # older cores fallback
         TIME_SECONDS as U_S,
     )
 
-from .entity import K1CEntity
+from .entity import KEntity
 from .const import DOMAIN
 
 
@@ -200,7 +200,7 @@ SPECS: list[dict[str, Any]] = [
 ]
 
 
-class K1CSimpleFieldSensor(K1CEntity, SensorEntity):
+class KSimpleFieldSensor(KEntity, SensorEntity):
     """Generic sensor bound to one telemetry field or a special computed field."""
 
     def __init__(self, coordinator, spec: dict[str, Any]):
@@ -250,7 +250,7 @@ class K1CSimpleFieldSensor(K1CEntity, SensorEntity):
 
 # custom_components/ha_creality_ws/sensor.py
 
-class PrintStatusSensor(K1CEntity, SensorEntity):
+class PrintStatusSensor(KEntity, SensorEntity):
     _attr_name = "Print Status"
     _attr_icon = "mdi:printer-3d"
 
@@ -325,7 +325,7 @@ class PrintStatusSensor(K1CEntity, SensorEntity):
         return attrs
 
 
-class UsedMaterialLengthSensor(K1CEntity, SensorEntity):
+class UsedMaterialLengthSensor(KEntity, SensorEntity):
     _attr_name = "Used Material Length"
     _attr_icon = "mdi:counter"
     _attr_native_unit_of_measurement = U_CM
@@ -345,7 +345,7 @@ class UsedMaterialLengthSensor(K1CEntity, SensorEntity):
         except (TypeError, ValueError):
             return None
 
-class PrintJobTimeSensor(K1CEntity, SensorEntity):
+class PrintJobTimeSensor(KEntity, SensorEntity):
     _attr_name = "Print Job Time"
     _attr_icon = "mdi:timer-play"
     _attr_native_unit_of_measurement = U_S
@@ -364,7 +364,7 @@ class PrintJobTimeSensor(K1CEntity, SensorEntity):
         except (TypeError, ValueError):
             return None
 
-class PrintLeftTimeSensor(K1CEntity, SensorEntity):
+class PrintLeftTimeSensor(KEntity, SensorEntity):
     _attr_name = "Print Time Left"
     _attr_icon = "mdi:timer-sand"
     _attr_native_unit_of_measurement = U_S
@@ -383,7 +383,7 @@ class PrintLeftTimeSensor(K1CEntity, SensorEntity):
         except (TypeError, ValueError):
             return None
 
-class RealTimeFlowSensor(K1CEntity, SensorEntity):
+class RealTimeFlowSensor(KEntity, SensorEntity):
     _attr_name = "Real-Time Flow"
     _attr_icon = "mdi:cube-send"
     _attr_native_unit_of_measurement = "mm³/s"
@@ -399,7 +399,7 @@ class RealTimeFlowSensor(K1CEntity, SensorEntity):
         return _safe_float(self.coordinator.data.get("realTimeFlow"))
 
 
-class CurrentObjectSensor(K1CEntity, SensorEntity):
+class CurrentObjectSensor(KEntity, SensorEntity):
     _attr_name = "Current Object"
     _attr_icon = "mdi:cube-outline"
 
@@ -421,7 +421,7 @@ class CurrentObjectSensor(K1CEntity, SensorEntity):
         }
 
 
-class ObjectCountSensor(K1CEntity, SensorEntity):
+class ObjectCountSensor(KEntity, SensorEntity):
     _attr_name = "Object Count"
     _attr_icon = "mdi:format-list-numbered"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -439,7 +439,7 @@ class ObjectCountSensor(K1CEntity, SensorEntity):
         return None
 
 
-class K1CPrintControlSensor(K1CEntity, SensorEntity):
+class KPrintControlSensor(KEntity, SensorEntity):
     """Diagnostic sensor exposing control pipeline state (queued actions, paused flag, raw states)."""
     _attr_name = "Print Control"
     _attr_icon = "mdi:debug-step-over"
@@ -480,7 +480,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Simple field sensors from SPECS
     for spec in SPECS:
-        ents.append(K1CSimpleFieldSensor(coord, spec))
+        ents.append(KSimpleFieldSensor(coord, spec))
 
     # Extra metrics you asked to expose
     ents.append(UsedMaterialLengthSensor(coord))
@@ -489,6 +489,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(RealTimeFlowSensor(coord))
     ents.append(CurrentObjectSensor(coord))
     ents.append(ObjectCountSensor(coord))
-    ents.append(K1CPrintControlSensor(coord))
+    ents.append(KPrintControlSensor(coord))
 
     async_add_entities(ents)

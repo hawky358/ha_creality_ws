@@ -5,7 +5,7 @@ import asyncio
 import logging
 from homeassistant.components.button import ButtonEntity
 
-from .entity import K1CEntity
+from .entity import KEntity
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)  # <-- fixes NameError on import
@@ -13,13 +13,13 @@ _LOGGER = logging.getLogger(__name__)  # <-- fixes NameError on import
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        K1CHomeAllButton(coord),
-        K1CPrintPauseButton(coord),
-        K1CPrintResumeButton(coord),
-        K1CPrintStopButton(coord),
+        KHomeAllButton(coord),
+        KPrintPauseButton(coord),
+        KPrintResumeButton(coord),
+        KPrintStopButton(coord),
     ])
 
-class K1CHomeAllButton(K1CEntity, ButtonEntity):
+class KHomeAllButton(KEntity, ButtonEntity):
     _attr_name = "Home (XY then Z)"
     _attr_icon = "mdi:home-circle"
 
@@ -41,24 +41,24 @@ class K1CHomeAllButton(K1CEntity, ButtonEntity):
                 return
             await asyncio.sleep(0.25)
 
-class _BasePrintButton(K1CEntity, ButtonEntity):
+class _BasePrintButton(KEntity, ButtonEntity):
     _attr_icon = "mdi:printer-3d"
     def __init__(self, coordinator, name: str, uid: str):
         super().__init__(coordinator, name, uid)
 
-class K1CPrintPauseButton(_BasePrintButton):
+class KPrintPauseButton(_BasePrintButton):
     def __init__(self, coordinator):
         super().__init__(coordinator, "Pause Print", "pause_print")
     async def async_press(self) -> None:
         await self.coordinator.request_pause()  # no optimistic mark
 
-class K1CPrintResumeButton(_BasePrintButton):
+class KPrintResumeButton(_BasePrintButton):
     def __init__(self, coordinator):
         super().__init__(coordinator, "Resume Print", "resume_print")
     async def async_press(self) -> None:
         await self.coordinator.request_resume()  # no optimistic mark
 
-class K1CPrintStopButton(_BasePrintButton):
+class KPrintStopButton(_BasePrintButton):
     def __init__(self, coordinator):
         super().__init__(coordinator, "Stop Print", "stop_print")
     async def async_press(self) -> None:

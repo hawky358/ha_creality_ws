@@ -2,16 +2,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from .ws_client import K1CClient
+from .ws_client import KClient
 from .const import DOMAIN, STALE_AFTER_SECS
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class K1CCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass, host: str, power_switch: str | None = None):
         super().__init__(hass, _LOGGER, name=f"{DOMAIN}@{host}", update_interval=None)
-        self.client = K1CClient(host, self._handle_message)
+        self.client = KClient(host, self._handle_message)
         self.data: dict[str, Any] = {}
         self._paused_flag = False
         self._last_avail = False

@@ -12,7 +12,7 @@ except Exception:  # older cores
     from homeassistant.const import TEMP_CELSIUS as UNIT_CELSIUS, PERCENTAGE as UNIT_PERCENT
 
 from .const import DOMAIN
-from .entity import K1CEntity
+from .entity import KEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -35,7 +35,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 # ---------- Unified speed+flow percent ----------
-class PrintTuningPercent(K1CEntity, NumberEntity):
+class PrintTuningPercent(KEntity, NumberEntity):
     """
     One control for both speed and flow.
     Writes: setFeedratePct=value and setFlowratePct=value.
@@ -73,7 +73,7 @@ class PrintTuningPercent(K1CEntity, NumberEntity):
 
 
 # ---------- Temperature targets (BOX inputs) ----------
-class NozzleTargetNumber(K1CEntity, NumberEntity):
+class NozzleTargetNumber(KEntity, NumberEntity):
     _attr_name = "Nozzle Target"
     _attr_icon = "mdi:thermometer"
     _attr_mode = NumberMode.BOX
@@ -100,7 +100,7 @@ class NozzleTargetNumber(K1CEntity, NumberEntity):
         await self.coordinator.client.send_set_retry(nozzleTempControl=v)
 
 
-class BedTargetNumber(K1CEntity, NumberEntity):
+class BedTargetNumber(KEntity, NumberEntity):
     _attr_name = "Bed Target"
     _attr_icon = "mdi:radiator"
     _attr_mode = NumberMode.BOX
@@ -129,7 +129,7 @@ class BedTargetNumber(K1CEntity, NumberEntity):
 
 
 # ---------- Fan percent via M106 (0%→off) ----------
-class _FanPctNumber(K1CEntity, NumberEntity):
+class _FanPctNumber(KEntity, NumberEntity):
     _attr_native_unit_of_measurement = UNIT_PERCENT
     _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = 0.0

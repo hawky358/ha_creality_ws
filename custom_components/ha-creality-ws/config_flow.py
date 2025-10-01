@@ -90,7 +90,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="cannot_connect")
 
         if not await _probe_tcp(host, WS_PORT):
-            return self.async_abort(reason="not_k1c")
+            return self.async_abort(reason="not_K")
 
         await self.async_set_unique_id(host)
         self._abort_if_unique_id_configured()
