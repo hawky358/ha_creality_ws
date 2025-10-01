@@ -263,3 +263,15 @@ class K1CPrinterCardEditor extends HTMLElement {
   }
 }
 customElements.define(EDITOR_TAG, K1CPrinterCardEditor);
+// Advertise to the card picker
+try {
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: CARD_TAG,                           // "k1c-printer-card"
+    name: "Creality Printer Card",
+    description: "Composite card + editor for Creality K-Series printers",
+    preview: true
+  });
+} catch (e) {
+  // non-fatal
+}
