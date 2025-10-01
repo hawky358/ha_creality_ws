@@ -50,9 +50,9 @@ If your printer power is controlled by a smart plug/switch, bind it so the integ
 
 ---
 
-## Lovelace Card (Zero-dependency)
+## Lovelace Card
 
-This repository **bundles** a standalone card (no `mushroom`, no `stack-in-card`, no `card-mod`). The integration copies the file to `/config/www/ha_creality_ws/k_printer_card.js` on setup and **auto-registers** the Lovelace resource **in storage mode**.
+This repository **bundles** a standalone card. The integration copies the file to `/config/www/ha_creality_ws/k_printer_card.js` on setup and **auto-registers** the Lovelace resource **in storage mode**.
 
 ### Resource registration
 
@@ -71,7 +71,6 @@ This repository **bundles** a standalone card (no `mushroom`, no `stack-in-card`
 
   ```yaml
   lovelace:
-    mode: yaml
     resources:
       - url: /local/ha_creality_ws/k_printer_card.js
         type: module
