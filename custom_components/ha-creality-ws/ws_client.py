@@ -8,7 +8,8 @@ import socket
 import time
 from typing import Any, Awaitable, Callable, Optional
 
-import websockets  # use HA-bundled version (>=15)
+import websockets
+from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, ConnectionClosed
 
 from .const import (
     RETRY_MIN_BACKOFF,
@@ -76,7 +77,7 @@ class KClient:
         ws = self._ws
         if ws:
             try:
-                await ws.close()
+                await ws.close(code=1000, reason="shutdown")
             except Exception:
                 pass
         if self._task:
@@ -86,6 +87,28 @@ class KClient:
             except Exception:
                 pass
             self._task = None
+            
+    def _is_benign_close(self, exc: Exception) -> bool:
+        """Return True for expected/normal shutdown / harmless closes."""
+        if isinstance(exc, (ConnectionClosedOK, asyncio.CancelledError)):
+            return True
+        if isinstance(exc, ConnectionClosed):
+            try:
+                if getattr(exc, "code", None) == 1000:
+                    return True
+            except Exception:
+                pass
+        msg = str(exc).lower()
+        if (
+            "no close frame received" in msg
+            or "connection closed ok" in msg
+            or "code = 1000" in msg
+            or "sent 1000" in msg
+        ):
+            return True
+        if self._stop.is_set():
+            return True
+        return False
 
     async def wait_first_connect(self, timeout: float = 5.0) -> bool:
         try:
@@ -175,7 +198,10 @@ class KClient:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                _LOGGER.warning("K WS connection error: %s", exc)
+                if self._is_benign_close(exc):
+                    _LOGGER.debug("WS closed: %s", exc)
+                else:
+                    _LOGGER.error("K WS connection error: %s", exc)
             finally:
                 # cleanup on disconnect
                 for t in (self._hb_task, self._tick_task):
@@ -201,6 +227,8 @@ class KClient:
         """Benign probe on silent connects and a WS-level ping keeps NAT/state alive."""
         try:
             await asyncio.sleep(PROBE_ON_SILENCE_SECS)
+            if self._stop.is_set():
+                return
             if time.monotonic() - self._last_rx > PROBE_ON_SILENCE_SECS:
                 try:
                     await self._send_json({"method": "get", "params": {"ReqPrinterPara": 1}})
@@ -209,6 +237,8 @@ class KClient:
 
             while True:
                 await asyncio.sleep(HEARTBEAT_SECS)
+                if self._stop.is_set():
+                    return
                 ws = self._ws
                 if not ws:
                     break

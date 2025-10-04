@@ -21,9 +21,10 @@ class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_power_off: bool = self.power_is_off()
 
     def set_power_switch(self, entity_id: str | None) -> None:
+        """Accept updates from options; make it thread-safe to notify."""
         self._power_switch_entity = (entity_id or "").strip() or None
-        self.async_update_listeners()
-
+        self._notify_listeners_threadsafe()
+        
     def power_is_off(self) -> bool:
         eid = self._power_switch_entity
         if not eid:
@@ -46,27 +47,30 @@ class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
     async def wait_first_connect(self, timeout: float = 5.0) -> bool:
         return await self.client.wait_first_connect(timeout=timeout)
-    
+        
     async def async_handle_power_change(self) -> None:
+        """Start/stop WS client when the power switch toggles."""
         now_off = self.power_is_off()
-        if now_off and not self._last_power_off:
+        if now_off and not getattr(self, "_last_power_off", False):
             _LOGGER.info("Power OFF detected; stopping WebSocket client")
             await self.client.stop()
-        elif (not now_off) and self._last_power_off:
+        elif (not now_off) and getattr(self, "_last_power_off", True):
             _LOGGER.info("Power ON detected; starting WebSocket client")
             await self.client.start()
         self._last_power_off = now_off
         self.async_update_listeners()
         
-    # Safe coroutine that only notifies listeners on the event loop
-    async def async_notify_listeners(self) -> None:
-        self.async_update_listeners()
+    def _notify_listeners_threadsafe(self) -> None:
+        """Always execute listener updates on HA's event loop."""
+        # Pass the callable itself (no parens); the loop invokes it safely.
+        self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
 
     def check_stale(self) -> None:
+        """Called by periodic timer; may run off the event loop."""
         now_avail = self.available
-        if now_avail != self._last_avail:
+        if now_avail != getattr(self, "_last_avail", None):
             self._last_avail = now_avail
-            self.async_update_listeners()
+            self._notify_listeners_threadsafe()
 
     @property
     def available(self) -> bool:
@@ -103,7 +107,7 @@ class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Your stack treats state==5 as paused; also honor explicit fields if present
         telem_paused = (st == 5) or bool(d.get("pause") == 1 or d.get("paused") or d.get("isPaused"))
         self.mark_paused(telem_paused)
-    # coordinator.py — add public getters
+
     def pending_pause(self) -> bool:
         return bool(self._pending_pause)
 
