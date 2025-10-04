@@ -154,7 +154,7 @@ class KPrinterCard extends HTMLElement {
       <ha-card class="card">
         <style>${style}</style>
         <div class="row-top">
-          <div class="title click" id="more">
+          <div class="title click" id="more" role="button" tabindex="0">
             <div class="shape">
               <div class="ring" id="ring"></div>
               <ha-icon id="icon"></ha-icon>
@@ -183,10 +183,27 @@ class KPrinterCard extends HTMLElement {
     `;
 
     // events
+    const fireMoreInfo = (eid) => {
+      if (!eid) return;
+      this.dispatchEvent(new CustomEvent("hass-more-info", {
+        detail: { entityId: eid },
+        bubbles: true,
+        composed: true,
+      }));
+    };
+
     this._root.getElementById("more")?.addEventListener("click", () => {
       const eid = this._cfg.camera || this._cfg.status || this._cfg.progress;
-      if (eid && this._hass) this._hass.moreInfoEntityId = eid;
+      fireMoreInfo(eid);
     });
+    this._root.getElementById("more")?.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        const eid = this._cfg.camera || this._cfg.status || this._cfg.progress;
+        fireMoreInfo(eid);
+      }
+    });
+
     this._root.getElementById("pause")?.addEventListener("click", () => this._pressButtonEntity(this._cfg.pause_btn) );
     this._root.getElementById("resume")?.addEventListener("click", () => this._pressButtonEntity(this._cfg.resume_btn) );
     this._root.getElementById("stop")?.addEventListener("click", () => this._pressButtonEntity(this._cfg.stop_btn) );

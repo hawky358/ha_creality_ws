@@ -27,9 +27,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coord.async_start()
-        ok = await coord.wait_first_connect(timeout=8.0)
-        if not ok:
-            _LOGGER.warning("Initial connect not confirmed; will retry in background")
+        # If printer is OFF, we intentionally don’t wait for connectivity.
+        if not coord.power_is_off():
+            ok = await coord.wait_first_connect(timeout=8.0)
+            if not ok:
+                _LOGGER.warning("Initial connect not confirmed; will retry in background")
     except Exception as exc:
         await coord.async_stop()
         raise ConfigEntryNotReady(str(exc)) from exc
@@ -46,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Periodic state checker
     def _interval_check(_now) -> None:
         coord.check_stale()
-        coord.async_update_listeners()
+        hass.loop.call_soon_threadsafe(coord.async_update_listeners)
     
     cancel_interval = async_track_time_interval(
         hass, _interval_check, timedelta(seconds=max(5, STALE_AFTER_SECS // 3))
@@ -58,8 +60,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not entity_id:
             return lambda: None
         
-        def _state_cb(event) -> None:
-            coord.async_update_listeners()
+        async def _state_cb(event) -> None:
+            await coord.async_handle_power_change()
 
         return async_track_state_change_event(hass, [entity_id], _state_cb)
 

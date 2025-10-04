@@ -18,6 +18,7 @@ class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._power_switch_entity: str | None = (power_switch or "").strip() or None
         self._pending_pause = False
         self._pending_resume = False
+        self._last_power_off: bool = self.power_is_off()
 
     def set_power_switch(self, entity_id: str | None) -> None:
         self._power_switch_entity = (entity_id or "").strip() or None
@@ -33,11 +34,33 @@ class KCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return str(st.state).lower() in ("off", "unavailable", "unknown")
 
     async def async_start(self) -> None:
+        if self.power_is_off():
+            _LOGGER.info("Power switch is OFF; deferring WS connect")
+            self._last_power_off = True
+            return
+        self._last_power_off = False
         await self.client.start()
+        
     async def async_stop(self) -> None:
         await self.client.stop()
+        
     async def wait_first_connect(self, timeout: float = 5.0) -> bool:
         return await self.client.wait_first_connect(timeout=timeout)
+    
+    async def async_handle_power_change(self) -> None:
+        now_off = self.power_is_off()
+        if now_off and not self._last_power_off:
+            _LOGGER.info("Power OFF detected; stopping WebSocket client")
+            await self.client.stop()
+        elif (not now_off) and self._last_power_off:
+            _LOGGER.info("Power ON detected; starting WebSocket client")
+            await self.client.start()
+        self._last_power_off = now_off
+        self.async_update_listeners()
+        
+    # Safe coroutine that only notifies listeners on the event loop
+    async def async_notify_listeners(self) -> None:
+        self.async_update_listeners()
 
     def check_stale(self) -> None:
         now_avail = self.available

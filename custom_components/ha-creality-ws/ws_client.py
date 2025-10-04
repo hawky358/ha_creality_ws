@@ -236,7 +236,8 @@ class KClient:
                 ws = self._ws
                 if not ws:
                     break
-
+                if self._stop.is_set():
+                    break
                 if now - t_para >= GET_REQPRINTERPARA_SEC:
                     try:
                         await self._send_json({"method": "get", "params": {"ReqPrinterPara": 1}})
