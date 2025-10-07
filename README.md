@@ -54,6 +54,26 @@ If your printer power is controlled by a smart plug/switch, bind it so the integ
 
 This repository **bundles** a standalone card. The integration copies the file to `/config/www/ha_creality_ws/k_printer_card.js` on setup and **auto-registers** the Lovelace resource **in storage mode**.
 
+### Card screenshots
+
+Below are example screenshots of the card interface states:
+
+Idle
+
+![Idle](img/k1c_idle.png)
+
+Off
+
+![Off](img/k1c_off.png)
+
+Printing
+
+![Printing](img/k1c_printing.png)
+
+Processing
+
+![Processing](img/k1c_processing.png)
+
 ### Resource registration
 
 * **Storage mode (default)**

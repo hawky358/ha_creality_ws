@@ -64,90 +64,89 @@ class KPrinterCard extends HTMLElement {
     const style = `
       /* inherit HA fonts & typography */
       :host { font: inherit; color: var(--primary-text-color); }
+
+      /* unify horizontal padding so right edges line up */
+      :host { --row-xpad: 6px; }
+
       .card {
         border-radius: var(--ha-card-border-radius, 12px);
         background: var(--card-background-color);
         color: var(--primary-text-color);
         box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0,0,0,.2));
-        padding: 10px 10px 12px 10px;
+        padding: 10px var(--row-xpad) 10px var(--row-xpad);
         display: grid;
         grid-template-rows: auto auto;
-        gap: 8px;
+        gap: 6px;
       }
+
+      /* top row */
       .row-top {
         display: grid;
         grid-template-columns: 1fr auto;
         align-items: center;
         gap: 8px;
-        padding: 2px 4px 0 4px;
+        padding: 0 var(--row-xpad);
       }
-      .title {
-        display: flex; align-items: center; gap: 12px;
-        min-height: 48px;
-      }
-      .shape {
-        position: relative;
-        width: 44px; height: 44px;   /* smaller, like Mushroom */
-        border-radius: 50%;
-        display: grid; place-items: center;
+      .title { display:flex; align-items:center; gap:10px; min-height:44px; }
+
+      /* icon + progress ring */
+      .shape { position:relative; width:40px; height:40px; border-radius:50%;
+        display:grid; place-items:center;
         background: radial-gradient(var(--card-background-color) 62%, transparent 0);
       }
-      .ring {
-        position: absolute; inset: 0;
-        border-radius: 50%;
+      .ring { position:absolute; inset:0; border-radius:50%;
         mask: radial-gradient(circle at 50% 50%, transparent 54%, black 55%);
         -webkit-mask: radial-gradient(circle at 50% 50%, transparent 54%, black 55%);
-        background:
-          conic-gradient(var(--ring-color, var(--primary-color)) var(--ring-pct, 0%), rgba(128,128,128,.25) var(--ring-pct, 0%));
+        background: conic-gradient(var(--ring-color, var(--primary-color)) var(--ring-pct,0%),
+                                  rgba(128,128,128,.25) var(--ring-pct,0%));
       }
-      ha-icon {
-        --mdc-icon-size: 26px;
-        width: 26px; height: 26px;
-        color: var(--icon-color, var(--primary-text-color));
-      }
-      .name {
-        font-weight: 600; font-size: 1rem; /* HA default ~16px */
-        line-height: 1.25;
-      }
-      .secondary {
-        color: var(--secondary-text-color);
-        font-size: .875rem; /* ~14px */
-        text-transform: none;
-      }
+      ha-icon { --mdc-icon-size:24px; width:24px; height:24px; color: var(--icon-color); }
+
+      .name { font-weight:600; font-size:.95rem; line-height:1.2; }
+      .secondary { color:var(--secondary-text-color); font-size:.8rem; }
+
+      /* action chips – align right edge to telemetry via the same side padding */
       .chips {
-        display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
-        padding: 0 6px 0 6px;
+        display:flex; gap:8px; justify-content:flex-end; flex-wrap:nowrap;
+        padding: 0 var(--row-xpad);
       }
       .chip {
-        display: inline-flex; align-items: center; justify-content: center;
-        gap: 6px; min-width: 44px; height: 40px;
-        border-radius: 20px; padding: 0 12px;
-        font-size: .875rem;
-        background: var(--chip-bg, rgba(128,128,128,.14));
-        color: var(--chip-fg, var(--primary-text-color));
-        cursor: pointer; user-select: none;
-        border: none; outline: none;
+        display:inline-flex; align-items:center; justify-content:center;
+        gap:6px; min-width:38px; height:34px;
+        border-radius:18px; padding:0 10px;
+        font-size:.8rem; background:var(--chip-bg, rgba(128,128,128,.14));
+        color:var(--chip-fg, var(--primary-text-color));
+        cursor:pointer; user-select:none; border:none; outline:none;
       }
-      .chip[hidden]{ display: none !important; }
+      .chip[hidden]{ display:none !important; }
       .chip:active { transform: translateY(1px); }
-      .chip.danger { --chip-bg: rgba(244, 67, 54, .95); --chip-fg: #fff; }
-      .chip.warn   { --chip-bg: rgba(252, 109, 9, .90);  --chip-fg: #fff; }
-      .chip.ok     { --chip-bg: rgba(76, 175, 80, .90);  --chip-fg: #fff; }
+      .chip.danger { --chip-bg: rgba(244, 67, 54, .95); --chip-fg:#fff; }
+      .chip.warn   { --chip-bg: rgba(252, 109, 9, .90);  --chip-fg:#fff; }
+      .chip.ok     { --chip-bg: rgba(76, 175, 80, .90);  --chip-fg:#fff; }
       .chip.light-on  { --chip-bg: rgba(255, 235, 59, .95); }
       .chip.light-off { --chip-bg: rgba(150,150,150,.35); }
+
+      /* telemetry row – single line, same right padding, tighter pills */
       .telemetry {
-        display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap;
-        padding: 2px 4px 4px 4px;
+        display:flex;
+        gap:6px;
+        justify-content:center;   /* was: flex-start */
+        flex-wrap:nowrap;
+        padding: 0 var(--row-xpad);
+        min-width:0;
+        overflow:hidden;
       }
       .pill {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 8px 12px; border-radius: 16px;
-        background: rgba(127,127,127,.12);
-        font-size: .875rem;
-        border: 1px solid rgba(255,255,255,0.08);
+        display:inline-flex; align-items:center; gap:6px;
+        padding:6px 10px; border-radius:14px;
+        background:rgba(127,127,127,.12);
+        font-size:.8rem; border:1px solid rgba(255,255,255,0.08);
+        white-space:nowrap; flex:0 0 auto;
       }
-      .pill ha-icon { --mdc-icon-size: 18px; width: 18px; height: 18px; }
-      .click { cursor: pointer; }
+      .pill ha-icon { --mdc-icon-size:16px; width:16px; height:16px; }
+
+      .click { cursor:pointer; }
+
     `;
 
     this._root.innerHTML = `
