@@ -1,5 +1,5 @@
-const CARD_TAG = "k-printer-card";
-const EDITOR_TAG = "k-printer-card-editor";
+const CARD_TAG = "k_printer_card";
+const EDITOR_TAG = "k_printer_card_editor";
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const mdi = (name) => `mdi:${name}`;

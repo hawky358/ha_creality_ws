@@ -69,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(cancel_power_watch)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    _LOGGER.info("ha-creality-ws: setup complete")
+    _LOGGER.info("ha_creality_ws: setup complete")
     return True
 
 
