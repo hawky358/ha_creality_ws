@@ -213,7 +213,7 @@ class KClient:
                 pass
             backoff = min(sleep_for, RETRY_MAX_BACKOFF)
 
-    _LOGGER.debug("K WS loop exited host=%s", self._host)
+            _LOGGER.debug("K WS loop exited host=%s", self._host)
 
     async def _heartbeat(self):
         """Benign probe on silent connects and a WS-level ping keeps NAT/state alive."""
