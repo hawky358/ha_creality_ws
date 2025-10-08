@@ -6,15 +6,16 @@
   "issue_tracker": "https://github.com/3dg1luk43/ha_creality_ws/issues",
   "requirements": [],
   "codeowners": ["@3dg1luk43"],
+  "dependencies": ["lovelace"],
   "iot_class": "local_push",
   "config_flow": true,
   "loggers": ["custom_components.ha_creality_ws"],
   "zeroconf": [
-    { "type": "_http._tcp.local.", "name": "*Creality*" },
-    { "type": "_workstation._tcp.local.", "name": "*Creality*" },
-    { "type": "_http._tcp.local.", "name": "*K1*" },
-    { "type": "_workstation._tcp.local.", "name": "*K1*" },
-    { "type": "_http._tcp.local.", "name": "*K2*" },
-    { "type": "_workstation._tcp.local.", "name": "*K2*" }
+    { "type": "_http._tcp.local.", "name": "*creality*" },
+    { "type": "_workstation._tcp.local.", "name": "*creality*" },
+    { "type": "_http._tcp.local.", "name": "*k1*" },
+    { "type": "_workstation._tcp.local.", "name": "*k1*" },
+    { "type": "_http._tcp.local.", "name": "*k2*" },
+    { "type": "_workstation._tcp.local.", "name": "*k2*" }
   ]
 }
