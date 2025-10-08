@@ -1,5 +1,5 @@
 {
-  "name": "HomeAssistant Creality WebSocket",
+  "name": "Creality Websocket Integration",
   "render_readme": true,
   "homeassistant": "2024.6.0"
 }
