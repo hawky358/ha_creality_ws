@@ -245,11 +245,6 @@ class KSimpleFieldSensor(KEntity, SensorEntity):
     def extra_state_attributes(self):
         return self._get_attrs(self.coordinator.data)
 
-
-# ----------------- specific sensors (status + new metrics) -----------------
-
-# custom_components/ha_creality_ws/sensor.py
-
 class PrintStatusSensor(KEntity, SensorEntity):
     _attr_name = "Print Status"
     _attr_icon = "mdi:printer-3d"

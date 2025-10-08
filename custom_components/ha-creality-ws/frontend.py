@@ -1,6 +1,3 @@
-# custom_components/ha_creality_ws/frontend.py
-
-"""Creality K Card registration and deploy to /local."""
 import logging
 import shutil
 from pathlib import Path
@@ -9,12 +6,12 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-LOCAL_SUBDIR = "ha_creality_ws"
-CARD_NAME = "k_printer_card.js"
+LOCAL_SUBDIR = "ha-creality-ws"
+CARD_NAME = "k-printer-card.js"
 LOCAL_URL = f"/local/{LOCAL_SUBDIR}/{CARD_NAME}"  # served from /config/www/...
 
 class CrealityCardRegistration:
-    """Deploys k_printer_card.js to /config/www and registers Lovelace resource."""
+    """Deploys k-printer-card.js to /config/www and registers Lovelace resource."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -24,7 +21,7 @@ class CrealityCardRegistration:
         return Path(__file__).parent / "frontend" / CARD_NAME
 
     def _dst_path(self) -> Path:
-        # target under /config/www/ha_creality_ws/k_printer_card.js
+        # target under /config/www/ha-creality-ws/k-printer-card.js
         return Path(self.hass.config.path("www")) / LOCAL_SUBDIR / CARD_NAME
 
     async def _deploy_card(self) -> None:

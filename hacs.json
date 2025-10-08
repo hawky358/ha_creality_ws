@@ -1,6 +1,5 @@
 {
   "name": "HomeAssistant Creality WebSocket",
   "render_readme": true,
-  "homeassistant": "2024.6.0",
-  "iot_class": "local_push"
+  "homeassistant": "2024.6.0"
 }

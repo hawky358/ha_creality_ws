@@ -1,6 +1,4 @@
-# custom_components/ha_creality_ws/const.py
-
-DOMAIN = "ha_creality_ws"
+DOMAIN = "ha-creality-ws"
 
 CONF_HOST = "host"
 CONF_NAME = "name"
