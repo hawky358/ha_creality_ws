@@ -8,7 +8,7 @@ _LOGGER = logging.getLogger(__name__)
 
 LOCAL_SUBDIR = "ha_creality_ws"
 CARD_NAME = "k_printer_card.js"
-LOCAL_URL = f"/local/{LOCAL_SUBDIR}/{CARD_NAME}"  # served from /config/www/...
+BASE_URL = f"/local/{LOCAL_SUBDIR}/{CARD_NAME}"  # served from /config/www/...
 
 class CrealityCardRegistration:
     """Deploys k_printer_card.js to /config/www and registers Lovelace resource."""
@@ -41,21 +41,48 @@ class CrealityCardRegistration:
             _LOGGER.warning("Failed to deploy K card to %s: %s", dst, exc)
 
     async def async_register(self) -> None:
-        """Deploy card and ensure Lovelace resource exists (storage mode)."""
+        """Deploy card and ensure Lovelace resource exists (storage mode), with cache-busting."""
         await self._deploy_card()
 
         lovelace: LovelaceData | None = self.hass.data.get("lovelace")
         if lovelace is None or lovelace.mode != "storage":
-            # YAML mode: cannot programmatically add resources; user must add LOCAL_URL manually.
+            # YAML mode: cannot programmatically add resources; user must add BASE_URL manually.
             _LOGGER.debug("Lovelace not in storage mode; skipping resource auto-register")
             return
 
+        # Build versioned URL based on the source file mtime to bust caches
+        try:
+            src = self._src_path()
+            ver = str(src.stat().st_mtime_ns)
+        except Exception:
+            ver = "1"
+        versioned_url = f"{BASE_URL}?v={ver}"
+
         resources = lovelace.resources.async_items()
-        if not any((r.get("url") == LOCAL_URL) for r in resources):
-            _LOGGER.info("Registering Lovelace resource for K card: %s", LOCAL_URL)
-            await lovelace.resources.async_create_item({"res_type": "module", "url": LOCAL_URL})
+        # Try to find an existing resource that points to this file (with or without query string)
+        existing = None
+        for r in resources:
+            url = (r.get("url") or "").strip()
+            if url == versioned_url or url.split("?")[0] == BASE_URL:
+                existing = r
+                break
+
+        if not existing:
+            _LOGGER.info("Registering Lovelace resource for K card: %s", versioned_url)
+            await lovelace.resources.async_create_item({"res_type": "module", "url": versioned_url})
         else:
-            _LOGGER.debug("Lovelace resource already present: %s", LOCAL_URL)
+            rid = existing.get("id")
+            if existing.get("url") != versioned_url and rid is not None:
+                _LOGGER.info("Updating Lovelace resource URL for K card to %s", versioned_url)
+                try:
+                    await lovelace.resources.async_update_item(rid, {"res_type": "module", "url": versioned_url})
+                except Exception:
+                    # Fallback: delete and recreate
+                    try:
+                        await lovelace.resources.async_delete_item(rid)
+                    except Exception:
+                        pass
+                    await lovelace.resources.async_create_item({"res_type": "module", "url": versioned_url})
 
     async def async_unregister(self) -> None:
         """Remove Lovelace resource (keep the file under /config/www)."""
@@ -65,7 +92,8 @@ class CrealityCardRegistration:
 
         rid = None
         for r in lovelace.resources.async_items():
-            if r.get("url") == LOCAL_URL:
+            url = (r.get("url") or "").strip()
+            if url.split("?")[0] == BASE_URL:
                 rid = r.get("id")
                 break
         if rid:

@@ -1,10 +1,8 @@
 from __future__ import annotations
-
-import re
 from typing import Any, Callable
+from .utils import parse_position as _parse_position, safe_float as _safe_float
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
-...
 from .entity import KEntity
 from .const import DOMAIN
 
@@ -22,7 +20,7 @@ try:
     U_MM = ULen.MILLIMETERS
     U_CM = ULen.CENTIMETERS
     U_S = UTime.SECONDS
-except Exception:  # older cores fallback
+except Exception:  # older cores fallback (keep compat with older HA constants)
     from homeassistant.const import (
         TEMP_CELSIUS as U_C,
         LENGTH_MILLIMETERS as U_MM,
@@ -31,8 +29,7 @@ except Exception:  # older cores fallback
         TIME_SECONDS as U_S,
     )
 
-from .entity import KEntity
-from .const import DOMAIN
+# (imports duplicated above; keep only one set)
 
 
 # ----------------- helpers -----------------
@@ -40,27 +37,7 @@ from .const import DOMAIN
 def _attr_dict(*pairs: tuple[str, Any]) -> dict[str, Any]:
     return {k: v for (k, v) in pairs if v is not None}
 
-_POS_RE = re.compile(
-    r"X:(?P<X>-?\d+(?:\.\d+)?)\s+Y:(?P<Y>-?\d+(?:\.\d+)?)\s+Z:(?P<Z>-?\d+(?:\.\d+)?)"
-)
-
-def _parse_position(d: dict[str, Any]) -> tuple[float | None, float | None, float | None]:
-    raw = d.get("curPosition")
-    if not isinstance(raw, str):
-        return (None, None, None)
-    m = _POS_RE.search(raw)
-    if not m:
-        return (None, None, None)
-    try:
-        return (float(m.group("X")), float(m.group("Y")), float(m.group("Z")))
-    except Exception:
-        return (None, None, None)
-
-def _safe_float(v: Any) -> float | None:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+# position parsing moved to utils.parse_position
 
 
 # ----------------- dynamic “simple field” sensors -----------------

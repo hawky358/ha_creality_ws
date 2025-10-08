@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, Optional
+from .utils import extract_host_from_zeroconf as util_extract_host_from_zeroconf
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
@@ -22,36 +23,8 @@ async def _probe_tcp(host: str, port: int, timeout: float = 2.5) -> bool:
 
 
 def _extract_host_from_zeroconf(info: Any) -> Optional[str]:
-    """Accept dict-style and object-style Zeroconf payloads without importing typed classes."""
-    if isinstance(info, dict):
-        host = info.get("host")
-        if host:
-            return host
-        addrs = info.get("addresses") or info.get("ip_addresses") or info.get("ip_address")
-        if isinstance(addrs, (list, tuple)) and addrs:
-            return str(addrs[0])
-        if isinstance(addrs, str):
-            return addrs
-        hn = info.get("hostname")
-        if isinstance(hn, str):
-            return hn.strip(".")
-        return None
-    try:
-        addrs = []
-        if hasattr(info, "ip_addresses") and info.ip_addresses:
-            addrs = [str(a) for a in info.ip_addresses]
-        elif hasattr(info, "addresses") and info.addresses:
-            addrs = [str(a) for a in info.addresses]
-        if addrs:
-            v4 = next((a for a in addrs if ":" not in a), None)
-            return v4 or addrs[0]
-        if getattr(info, "host", None):
-            return str(info.host)
-        if getattr(info, "hostname", None):
-            return str(info.hostname).rstrip(".")
-    except Exception:
-        pass
-    return None
+    # Use shared helper for testability
+    return util_extract_host_from_zeroconf(info)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):

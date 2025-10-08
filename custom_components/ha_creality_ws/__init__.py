@@ -38,9 +38,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
 
-    # Register the Lovelace card
-    card_register = CrealityCardRegistration(hass)
-    await card_register.async_register()
+    # Register the Lovelace card (non-fatal on failure)
+    try:
+        card_register = CrealityCardRegistration(hass)
+        await card_register.async_register()
+    except Exception as exc:
+        _LOGGER.warning("Lovelace card registration skipped due to error: %s", exc)
 
     # Listener for options updates
     entry.async_on_unload(entry.add_update_listener(options_update_listener))

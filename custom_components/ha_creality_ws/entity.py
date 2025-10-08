@@ -3,6 +3,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MFR, MODEL
+from .utils import parse_model_version
 
 
 def _parse_model_version(s: str | None) -> tuple[str | None, str | None]:
@@ -66,8 +67,8 @@ class KEntity(CoordinatorEntity):
         model = d.get("model") or MODEL
         hostname = d.get("hostname")
 
-        # Clean firmware/hardware versions
-        hw_ver, sw_ver = _parse_model_version(d.get("modelVersion"))
+    # Clean firmware/hardware versions
+    hw_ver, sw_ver = parse_model_version(d.get("modelVersion"))
 
         return DeviceInfo(
             identifiers={(DOMAIN, self._host)},

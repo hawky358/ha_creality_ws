@@ -77,10 +77,10 @@ Processing
 ### Resource registration
 
 * **Storage mode (default)**
-  The integration registers the resource automatically:
+  The integration registers the resource automatically with cache-busting:
 
   ```
-  /local/ha_creality_ws/k_printer_card.js   (type: module)
+  /local/ha_creality_ws/k_printer_card.js?v=<build_mtime>   (type: module)
   ```
 
   If you ever remove/re-add the integration or migrate dashboards, verify it under:
@@ -129,12 +129,12 @@ Then remove the `?v=` the next time.
 
 ## Card Usage
 
-The card’s element tag is **`custom:k_printer_card`**.
+The card’s element tag is **`custom:k-printer-card`**.
 
 Add via UI (Manual card) or YAML:
 
 ```yaml
-type: custom:k_printer_card
+type: custom:k-printer-card
 name: "K1C Printer"
 camera: camera.k1c_printer_camera
 status: sensor.k1c_print_status
@@ -167,7 +167,7 @@ stop_btn: button.k1c_stop_print
 ## Troubleshooting
 
 * **“Configuration error” in picker or blank card**
-  Hard refresh Lovelace. Verify the resource exists (see *Resource registration*). Ensure the element type is `custom:k_printer_card` (not the previous tag).
+  Hard refresh Lovelace. Verify the resource exists (see *Resource registration*). Ensure the element type is `custom:k-printer-card`.
 * **Controls do nothing**
   Confirm the `pause_btn`, `resume_btn`, `stop_btn` entities exist and are `button.*`. The card calls `button.press`.
   Confirm the light entity domain is `switch` or `light`.

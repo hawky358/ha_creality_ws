@@ -16,7 +16,9 @@ from .const import (
     RETRY_MAX_BACKOFF,
     HEARTBEAT_SECS,
     PROBE_ON_SILENCE_SECS,
+    WS_URL_TEMPLATE,
 )
+from .utils import coerce_numbers
 
 _LOGGER = logging.getLogger(__name__)
 OnMessage = Callable[[dict[str, Any]], Awaitable[None]]
@@ -26,18 +28,7 @@ GET_REQPRINTERPARA_SEC = 5.0         # curPosition, autohome, etc.
 GET_PRINT_OBJECTS_SEC = 2.0          # objects/exclusions/current object
 
 
-def _coerce_numbers(d: dict[str, Any]) -> dict[str, Any]:
-    """Convert numeric strings from the printer to actual numbers for HA."""
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, str):
-            try:
-                out[k] = float(v) if "." in v else int(v)
-                continue
-            except Exception:
-                pass
-        out[k] = v
-    return out
+## number coercion handled by utils.coerce_numbers
 
 
 class KClient:
@@ -45,7 +36,8 @@ class KClient:
 
     def __init__(self, host: str, on_message: OnMessage):
         self._host = host
-        self._url = lambda: f"ws://{self._resolve_host()}:{9999}"
+        # Resolve host to IPv4 if available and build URL via template
+        self._url = lambda: WS_URL_TEMPLATE.format(host=self._resolve_host())
         self._on_message = on_message
         self._state: dict[str, Any] = {}
 
@@ -143,12 +135,12 @@ class KClient:
         while not self._stop.is_set():
             try:
                 url = self._url()
-                _LOGGER.debug("K WS connecting: %s", url)
+                _LOGGER.debug("K WS connecting host=%s url=%s", self._host, url)
                 # Disable library pings; we do app-level heartbeat + periodic GETs.
                 async with websockets.connect(url, ping_interval=None) as ws:
                     self._ws = ws
                     self._ws_ready.set()  # signal connected
-                    _LOGGER.info("K WS connected to %s", url)
+                    _LOGGER.info("K WS connected host=%s url=%s", self._host, url)
                     self._connected_once.set()
                     backoff = RETRY_MIN_BACKOFF
                     self._last_rx = time.monotonic()
@@ -186,12 +178,12 @@ class KClient:
                             continue
 
                         if isinstance(payload, dict):
-                            merged = _coerce_numbers(payload)
+                            merged = coerce_numbers(payload)
                             self._state.update(merged)
                             try:
                                 await self._on_message(dict(self._state))
                             except Exception:
-                                _LOGGER.exception("K on_message failed")
+                                _LOGGER.exception("K on_message failed host=%s", self._host)
                         else:
                             _LOGGER.debug("K WS unexpected frame type: %r", type(payload))
 
@@ -199,9 +191,9 @@ class KClient:
                 break
             except Exception as exc:
                 if self._is_benign_close(exc):
-                    _LOGGER.debug("WS closed: %s", exc)
+                    _LOGGER.debug("K WS closed host=%s reason=%s", self._host, exc)
                 else:
-                    _LOGGER.error("K WS connection error: %s", exc)
+                    _LOGGER.error("K WS connection error host=%s err=%s", self._host, exc)
             finally:
                 # cleanup on disconnect
                 for t in (self._hb_task, self._tick_task):
@@ -221,7 +213,7 @@ class KClient:
                 pass
             backoff = min(sleep_for, RETRY_MAX_BACKOFF)
 
-        _LOGGER.debug("K WS loop exited")
+    _LOGGER.debug("K WS loop exited host=%s", self._host)
 
     async def _heartbeat(self):
         """Benign probe on silent connects and a WS-level ping keeps NAT/state alive."""
@@ -246,7 +238,7 @@ class KClient:
                     pong = await ws.ping()
                     await asyncio.wait_for(pong, timeout=5.0)
                 except Exception:
-                    _LOGGER.debug("K WS ping failed; forcing reconnect")
+                    _LOGGER.debug("K WS ping failed; forcing reconnect host=%s", self._host)
                     try:
                         await ws.close()
                     except Exception:
