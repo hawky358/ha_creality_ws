@@ -4,9 +4,9 @@ import logging
 from typing import Any, Optional
 from .utils import extract_host_from_zeroconf as util_extract_host_from_zeroconf
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import config_validation as cv, selector
+from homeassistant import config_entries #type: ignore[import]
+from homeassistant.data_entry_flow import FlowResult #type: ignore[import]
+from homeassistant.helpers import config_validation as cv, selector #type: ignore[import]
 from .const import DOMAIN, CONF_HOST, CONF_NAME, DEFAULT_NAME, WS_PORT, CONF_POWER_SWITCH
 
 _LOGGER = logging.getLogger(__name__)

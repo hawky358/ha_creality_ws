@@ -2,7 +2,11 @@ from __future__ import annotations
 from typing import Any, Callable
 from .utils import parse_position as _parse_position, safe_float as _safe_float
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from .entity import KEntity
 from .const import DOMAIN
 
@@ -10,7 +14,7 @@ from .const import DOMAIN
 
 # Unit compatibility across HA versions
 try:
-    from homeassistant.const import (
+    from homeassistant.const import ( #type: ignore[import]
         UnitOfTemperature as UTemp,
         UnitOfLength as ULen,
         PERCENTAGE as U_PERCENT,
@@ -21,7 +25,7 @@ try:
     U_CM = ULen.CENTIMETERS
     U_S = UTime.SECONDS
 except Exception:  # older cores fallback (keep compat with older HA constants)
-    from homeassistant.const import (
+    from homeassistant.const import ( #type: ignore[import]
         TEMP_CELSIUS as U_C,
         LENGTH_MILLIMETERS as U_MM,
         LENGTH_CENTIMETERS as U_CM,

@@ -1,6 +1,6 @@
 from __future__ import annotations
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity import DeviceInfo #type: ignore[import]
+from homeassistant.helpers.update_coordinator import CoordinatorEntity #type: ignore[import]
 
 from .const import DOMAIN, MFR, MODEL
 from .utils import parse_model_version
@@ -67,8 +67,8 @@ class KEntity(CoordinatorEntity):
         model = d.get("model") or MODEL
         hostname = d.get("hostname")
 
-    # Clean firmware/hardware versions
-    hw_ver, sw_ver = parse_model_version(d.get("modelVersion"))
+        # Clean firmware/hardware versions
+        hw_ver, sw_ver = parse_model_version(d.get("modelVersion"))
 
         return DeviceInfo(
             identifiers={(DOMAIN, self._host)},

@@ -3,10 +3,10 @@ import logging
 from datetime import timedelta
 from typing import Callable, List, Optional
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.event import (
+from homeassistant.config_entries import ConfigEntry #type: ignore[import]
+from homeassistant.core import HomeAssistant #type: ignore[import]
+from homeassistant.exceptions import ConfigEntryNotReady #type: ignore[import]
+from homeassistant.helpers.event import ( #type: ignore[import]
     async_track_time_interval,
     async_track_state_change_event,
 )
