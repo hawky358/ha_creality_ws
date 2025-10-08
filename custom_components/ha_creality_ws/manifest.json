@@ -1,15 +1,17 @@
 {
   "domain": "ha_creality_ws",
   "name": "Creality WebSocket Integration",
-  "version": "0.4.5",
-  "documentation": "https://github.com/3dg1luk43/ha_creality_ws",
-  "issue_tracker": "https://github.com/3dg1luk43/ha_creality_ws/issues",
-  "requirements": [],
   "codeowners": ["@3dg1luk43"],
-  "dependencies": ["lovelace"],
-  "iot_class": "local_push",
   "config_flow": true,
+  "dependencies": ["lovelace"],
+  "documentation": "https://github.com/3dg1luk43/ha_creality_ws",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/3dg1luk43/ha_creality_ws/issues",
   "loggers": ["custom_components.ha_creality_ws"],
+  "requirements": [
+    "websockets>=10.4"
+  ],
+  "version": "0.4.5",
   "zeroconf": [
     { "type": "_http._tcp.local.", "name": "*creality*" },
     { "type": "_workstation._tcp.local.", "name": "*creality*" },
