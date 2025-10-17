@@ -69,7 +69,10 @@ SPECS: list[dict[str, Any]] = [
         "field": "boxTemp",
         "device_class": SensorDeviceClass.TEMPERATURE,
         "unit": U_C,
-        "attrs": lambda d: {},
+        "attrs": lambda d: _attr_dict(
+            ("target", d.get("targetBoxTemp")),
+            ("max", d.get("maxBoxTemp")),
+        ),
         "state_class": SensorStateClass.MEASUREMENT,
     },
     {
