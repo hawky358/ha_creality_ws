@@ -7,7 +7,18 @@ import voluptuous as vol
 from homeassistant import config_entries #type: ignore[import]
 from homeassistant.data_entry_flow import FlowResult #type: ignore[import]
 from homeassistant.helpers import config_validation as cv, selector #type: ignore[import]
-from .const import DOMAIN, CONF_HOST, CONF_NAME, DEFAULT_NAME, WS_PORT, CONF_POWER_SWITCH
+from .const import (
+    DOMAIN,
+    CONF_HOST,
+    CONF_NAME,
+    DEFAULT_NAME,
+    WS_PORT,
+    CONF_POWER_SWITCH,
+    CONF_CAMERA_MODE,
+    CAM_MODE_AUTO,
+    CAM_MODE_MJPEG,
+    CAM_MODE_WEBRTC,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +95,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 default=self.config_entry.options.get(CONF_POWER_SWITCH, "")
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
+            ),
+            vol.Optional(
+                CONF_CAMERA_MODE,
+                default=self.config_entry.options.get(CONF_CAMERA_MODE, CAM_MODE_AUTO),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[CAM_MODE_AUTO, CAM_MODE_MJPEG, CAM_MODE_WEBRTC],
+                    translation_key="camera_mode",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
             ),
         })
         return self.async_show_form(step_id="init", data_schema=schema)

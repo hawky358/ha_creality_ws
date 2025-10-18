@@ -12,7 +12,9 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 * **Optional power switch binding** to a `switch` entity for accurate “Off” handling.
 * **Entities:** status, progress, time left, temperatures (nozzle/bed/chamber), current layer/total layers, etc.
 * **Controls:** pause, resume, stop, light toggle.
-* **Camera proxy** (MJPEG) via Home Assistant.
+* **Camera:** auto-detects stream type by model:
+  - K1/K1C/K1 Plus: MJPEG proxy via Home Assistant
+  - K2 family: Native WebRTC (no custom card required on recent HA), entity also exposes a ready-to-use `webrtc:` URL attribute
 * **Lovelace card**: dependency-free, uses HA fonts, progress ring, contextual chips, telemetry pills.
 
 ---
@@ -47,6 +49,12 @@ If your printer power is controlled by a smart plug/switch, bind it so the integ
 
 * **Settings → Devices & Services →** your printer **→ Configure**
   Choose the `switch` entity. Submit.
+
+### 3) Optional: camera mode
+
+If auto-detection doesn’t choose your preferred stream, you can force it under the integration’s Configure dialog:
+
+- Camera Mode: `auto` (default) | `mjpeg` | `webrtc`
 
 ---
 
@@ -175,6 +183,19 @@ stop_btn: button.k1c_stop_print
   Set the **Power Switch** in the integration’s Configure dialog.
 * **Resource missing in storage mode**
   Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
+
+---
+
+## Camera specifics (K1 vs K2)
+
+- The integration probes the printer and creates the appropriate camera entity:
+  - K1/K1C/K1 Plus: MJPEG camera. Works with core cards like Picture Glance.
+  - K2 family: WebRTC camera. Home Assistant can show this stream with WebRTC-capable cards
+    such as `webrtc-card` or `advanced-camera-card`.
+
+- For WebRTC cameras, the entity includes attributes:
+  - `webrtc_url`: e.g. `webrtc:http://<printer-ip>:8000/call/webrtc_local#format=creality`
+  You can paste this URL into your WebRTC card configuration.
 
 ---
 

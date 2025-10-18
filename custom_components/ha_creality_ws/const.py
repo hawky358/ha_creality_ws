@@ -4,6 +4,7 @@ CONF_HOST = "host"
 CONF_NAME = "name"
 CONF_DISCOVERY_SCAN_CIDR = "scan_cidr"
 CONF_POWER_SWITCH = "power_switch"
+CONF_CAMERA_MODE = "camera_mode"
 
 DEFAULT_NAME = "Creality Printer (WS)"
 
@@ -13,6 +14,16 @@ HTTP_PORT = 80
 
 WS_URL_TEMPLATE = "ws://{host}:" + str(WS_PORT)
 MJPEG_URL_TEMPLATE = "http://{host}:" + str(MJPEG_PORT) + "/?action=stream"
+
+# WebRTC signaling endpoint (K2 models)
+WEBRTC_PORT = 8000
+WEBRTC_CALL_PATH = "/call/webrtc_local"
+WEBRTC_URL_TEMPLATE = "http://{host}:" + str(WEBRTC_PORT) + WEBRTC_CALL_PATH
+
+# Camera modes
+CAM_MODE_AUTO = "auto"
+CAM_MODE_MJPEG = "mjpeg"
+CAM_MODE_WEBRTC = "webrtc"
 
 MFR = "Creality"
 MODEL = "K"

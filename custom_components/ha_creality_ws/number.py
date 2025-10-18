@@ -84,7 +84,8 @@ class NozzleTargetNumber(KEntity, NumberEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "nozzle_target")
-        self._attr_native_max_value = self.coordinator.data.get("maxNozzleTemp")
+        max_nozzle_temp = self.coordinator.data.get("maxNozzleTemp")
+        self._attr_native_max_value = float(max_nozzle_temp) if max_nozzle_temp is not None else 300.0
     @property
     def native_value(self) -> float | None:
         if self._should_zero():
@@ -96,7 +97,11 @@ class NozzleTargetNumber(KEntity, NumberEntity):
             return None
 
     async def async_set_native_value(self, value: float) -> None:
-        v = int(max(0, min(self._attr_native_max_value, round(value))))
+        v = int(round(value))
+        v = max(int(self._attr_native_min_value or 0), v)
+        max_v = self._attr_native_max_value
+        if max_v is not None:
+            v = min(int(max_v), v)
         await self.coordinator.client.send_set_retry(nozzleTempControl=v)
 
 
@@ -111,7 +116,8 @@ class BedTargetNumber(KEntity, NumberEntity):
     def __init__(self, coordinator, bed_index: int = 0) -> None:
         super().__init__(coordinator, self._attr_name, f"bed_target_{bed_index}")
         self._idx = int(bed_index)
-        self._attr_native_max_value = self.coordinator.data.get("maxBedTemp")
+        max_bed_temp = self.coordinator.data.get("maxBedTemp")
+        self._attr_native_max_value = float(max_bed_temp) if max_bed_temp is not None else 100.0
 
     @property
     def native_value(self) -> float | None:
@@ -124,7 +130,11 @@ class BedTargetNumber(KEntity, NumberEntity):
             return None
 
     async def async_set_native_value(self, value: float) -> None:
-        v = int(max(0, min(self._attr_native_max_value, round(value))))
+        v = int(round(value))
+        v = max(int(self._attr_native_min_value or 0), v)
+        max_v = self._attr_native_max_value
+        if max_v is not None:
+            v = min(int(max_v), v)
         await self.coordinator.client.send_set_retry(bedTempControl={"num": self._idx, "val": v})
 
 
@@ -138,7 +148,10 @@ class BoxTargetNumber(KEntity, NumberEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "box_target")
-        self._attr_native_max_value = self.coordinator.data.get("maxBoxTemp")
+        max_box_temp = self.coordinator.data.get("maxBoxTemp")
+        if max_box_temp is None or not isinstance(max_box_temp, (int, float)):
+            max_box_temp = 60
+        self._attr_native_max_value = float(max_box_temp)
     @property
     def native_value(self) -> float | None:
         if self._should_zero():
@@ -150,7 +163,15 @@ class BoxTargetNumber(KEntity, NumberEntity):
             return None
 
     async def async_set_native_value(self, value: float) -> None:
-        v = int(max(0, min(self._attr_native_max_value, round(value)))) #If you change this manually anything <= 40 will reset to 0. The active chamber heater only turns on when > 40C (K2Plus)
+        # If you change this manually anything <= 40 will reset to 0. The active chamber heater only turns on when > 40C (K2Plus)
+        if value <= 40:
+            v = 0
+        else:
+            v = int(round(value))
+            v = max(int(self._attr_native_min_value or 0), v)
+            max_v = self._attr_native_max_value
+            if max_v is not None:
+                v = min(int(max_v), v)
         await self.coordinator.client.send_set_retry(boxTempControl=v)
 
 
