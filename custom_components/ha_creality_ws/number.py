@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import timedelta
+from homeassistant.helpers.event import async_track_time_interval  # type: ignore[import]
 
 from homeassistant.components.number import NumberEntity, NumberMode
 
@@ -25,14 +27,42 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # ---- Target temperatures (number input boxes) ----
     ents.append(NozzleTargetNumber(coord))
     ents.append(BedTargetNumber(coord, bed_index=0))
+    added_box = False
     if coord.data.get("maxBoxTemp"):
         ents.append(BoxTargetNumber(coord))
+        added_box = True
     # ---- Fan percentages via M106 Pn Sxxx (no switches) ----
     ents.append(_FanPctNumber(coord, "Model Fan %", "modelFanPct", "model_fan_pct", channel=0))
     ents.append(_FanPctNumber(coord, "Case Fan %", "caseFanPct", "case_fan_pct", channel=1))
     ents.append(_FanPctNumber(coord, "Side Fan %", "auxiliaryFanPct", "side_fan_pct", channel=2))
 
     async_add_entities(ents)
+
+    # Delayed capability refresh: some firmwares expose maxBoxTemp later in boot.
+    # Poll briefly and add BoxTargetNumber once capability appears.
+    if not added_box:
+        def _capability_check(_now) -> None:
+            nonlocal added_box
+            if added_box:
+                return
+            try:
+                has_box = coord.data.get("maxBoxTemp") is not None
+            except Exception:
+                has_box = False
+            if has_box:
+                added_box = True
+                # Schedule entity addition on event loop
+                hass.async_create_task(async_add_entities([BoxTargetNumber(coord)]))
+                # Once added, we can stop further checks by cancelling the interval
+
+        # Run every 5 seconds for up to ~2 minutes (caller can cancel on unload)
+        cancel = async_track_time_interval(hass, _capability_check, timedelta(seconds=5))
+        # Ensure the interval stops on entry unload
+        try:
+            entry.async_on_unload(cancel)
+        except Exception:
+            # Best-effort; integration unload will drop callback references anyway
+            pass
 
 
 # ---------- Unified speed+flow percent ----------

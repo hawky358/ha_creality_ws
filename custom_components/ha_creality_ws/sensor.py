@@ -389,7 +389,8 @@ class CurrentObjectSensor(KEntity, SensorEntity):
     def native_value(self) -> str | None:
         if self._should_zero():
             return None
-        v = self.coordinator.data.get("current_object")
+        d = self.coordinator.data or {}
+        v = d.get("current_object") or d.get("currentObject")
         return str(v) if v is not None else None
 
     @property
@@ -412,9 +413,14 @@ class ObjectCountSensor(KEntity, SensorEntity):
     def native_value(self) -> int | None:
         if self._should_zero():
             return 0
-        objs = self.coordinator.data.get("objects_list")
+        d = self.coordinator.data or {}
+        objs = d.get("objects_list") or d.get("objectsList") or d.get("objects")
         if isinstance(objs, list):
             return len(objs)
+        if isinstance(objs, dict):
+            lst = objs.get("list")
+            if isinstance(lst, list):
+                return len(lst)
         return None
 
 
@@ -458,7 +464,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(PrintStatusSensor(coord))
 
     # Simple field sensors from SPECS
+    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp"))
     for spec in SPECS:
+        if spec.get("uid") == "box_temperature" and not has_box:
+            continue
         ents.append(KSimpleFieldSensor(coord, spec))
 
     # Extra metrics you asked to expose

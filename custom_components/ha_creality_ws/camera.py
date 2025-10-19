@@ -144,6 +144,7 @@ class CrealityWebRTCCamera(_BaseCamera):
                 self._attr_frontend_stream_type = StreamType.WEB_RTC  # type: ignore[attr-defined]
             except Exception:
                 pass
+        self._last_error: str | None = None
 
     async def async_camera_image(
         self,
@@ -158,10 +159,13 @@ class CrealityWebRTCCamera(_BaseCamera):
     def extra_state_attributes(self) -> dict:
         # Provide a ready-to-use webrtc-card URL matching existing community setups
         # Example: webrtc:http://<host>:8000/call/webrtc_local#format=creality
-        return {
+        attrs = {
             "webrtc_url": f"webrtc:{self._signaling_url}#format=creality",
             "signaling_url": self._signaling_url,
         }
+        if self._last_error:
+            attrs["error"] = self._last_error
+        return attrs
 
     async def async_handle_web_rtc_offer(self, offer_sdp: str) -> str | None:  # type: ignore[override]
         """Forward HA's WebRTC SDP offer to the printer and return the SDP answer.
@@ -183,9 +187,11 @@ class CrealityWebRTCCamera(_BaseCamera):
             ) as resp:
                 if resp.status != 200:
                     # Return None to let frontend handle error state
+                    self._last_error = f"signaling HTTP {resp.status}"
                     return None
                 raw = await resp.read()
-        except Exception:
+        except Exception as exc:
+            self._last_error = f"signaling error: {exc}"
             return None
 
         # Decode base64 -> JSON -> extract answer SDP
@@ -193,7 +199,8 @@ class CrealityWebRTCCamera(_BaseCamera):
             decoded = base64.b64decode(raw)
             payload = json.loads(decoded.decode("utf-8", "ignore"))
             return payload.get("sdp")
-        except Exception:
+        except Exception as exc:
+            self._last_error = f"invalid answer: {exc}"
             return None
 
 

@@ -27,13 +27,23 @@ class CrealityCardRegistration:
     async def _deploy_card(self) -> None:
         src = self._src_path()
         dst = self._dst_path()
-        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        def _sync_copy():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            # copy if missing or outdated
+            src_mtime = src.stat().st_mtime_ns
+            try:
+                dst_mtime = dst.stat().st_mtime_ns
+            except FileNotFoundError:
+                dst_mtime = -1
+            if dst_mtime < src_mtime:
+                shutil.copy2(src, dst)
+                return True
+            return False
 
         try:
-            # copy if missing or outdated
-            need_copy = (not dst.exists()) or (src.stat().st_mtime_ns > dst.stat().st_mtime_ns)
-            if need_copy:
-                shutil.copy2(src, dst)
+            changed = await self.hass.async_add_executor_job(_sync_copy)
+            if changed:
                 _LOGGER.info("Deployed K card to %s", dst)
             else:
                 _LOGGER.debug("K card already up-to-date at %s", dst)
@@ -53,7 +63,8 @@ class CrealityCardRegistration:
         # Build versioned URL based on the source file mtime to bust caches
         try:
             src = self._src_path()
-            ver = str(src.stat().st_mtime_ns)
+            ver_ns = await self.hass.async_add_executor_job(lambda: src.stat().st_mtime_ns)
+            ver = str(ver_ns)
         except Exception:
             ver = "1"
         versioned_url = f"{BASE_URL}?v={ver}"

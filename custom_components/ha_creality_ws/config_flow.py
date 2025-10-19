@@ -83,7 +83,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # --------- Options Flow ---------
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+        super().__init__()
+        # Avoid deprecated `self.config_entry = config_entry`; store private reference
+        self._entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
@@ -92,13 +94,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         schema = vol.Schema({
             vol.Optional(
                 CONF_POWER_SWITCH,
-                default=self.config_entry.options.get(CONF_POWER_SWITCH, "")
+                default=self._entry.options.get(CONF_POWER_SWITCH, "")
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
             ),
             vol.Optional(
                 CONF_CAMERA_MODE,
-                default=self.config_entry.options.get(CONF_CAMERA_MODE, CAM_MODE_AUTO),
+                default=self._entry.options.get(CONF_CAMERA_MODE, CAM_MODE_AUTO),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[CAM_MODE_AUTO, CAM_MODE_MJPEG, CAM_MODE_WEBRTC],
