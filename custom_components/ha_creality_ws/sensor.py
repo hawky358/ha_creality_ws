@@ -8,6 +8,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from .entity import KEntity
+from datetime import timedelta
+from homeassistant.helpers.event import async_track_time_interval  # type: ignore[import]
 from .const import DOMAIN
 
 
@@ -465,10 +467,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Simple field sensors from SPECS
     has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp"))
+    added_box_sensor = False
     for spec in SPECS:
-        if spec.get("uid") == "box_temperature" and not has_box:
-            continue
-        ents.append(KSimpleFieldSensor(coord, spec))
+        if spec.get("uid") == "box_temperature":
+            if has_box:
+                ents.append(KSimpleFieldSensor(coord, spec))
+                added_box_sensor = True
+            # if not has_box, defer adding below
+        else:
+            ents.append(KSimpleFieldSensor(coord, spec))
 
     # Extra metrics you asked to expose
     ents.append(UsedMaterialLengthSensor(coord))
@@ -480,3 +487,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(KPrintControlSensor(coord))
 
     async_add_entities(ents)
+
+    # Delayed capability refresh for Box Temperature sensor: some firmwares
+    # surface boxTemp/maxBoxTemp only after boot. Add the sensor when it appears.
+    if not added_box_sensor:
+        def _capability_check(_now) -> None:
+            nonlocal added_box_sensor
+            if added_box_sensor:
+                return
+            try:
+                d = coord.data or {}
+                has_box_now = (d.get("boxTemp") is not None) or (d.get("maxBoxTemp") is not None)
+            except Exception:
+                has_box_now = False
+            if has_box_now:
+                added_box_sensor = True
+                # Find the spec for box_temperature
+                spec = next((s for s in SPECS if s.get("uid") == "box_temperature"), None)
+                if spec is not None:
+                    hass.async_create_task(async_add_entities([KSimpleFieldSensor(coord, spec)]))
+
+        cancel = async_track_time_interval(hass, _capability_check, timedelta(seconds=5))
+        try:
+            entry.async_on_unload(cancel)
+        except Exception:
+            pass

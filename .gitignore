@@ -1,2 +1,4 @@
 copilot-instructions.md
 webrtc_materials/*
+tools/*
+.venv/*
