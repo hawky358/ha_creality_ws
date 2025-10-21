@@ -4,8 +4,7 @@ from datetime import timedelta
 from typing import Callable, List, Optional
 
 from homeassistant.config_entries import ConfigEntry #type: ignore[import]
-from homeassistant.core import HomeAssistant, CoreState #type: ignore[import]
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED #type: ignore[import]
+from homeassistant.core import HomeAssistant #type: ignore[import]
 from homeassistant.exceptions import ConfigEntryNotReady #type: ignore[import]
 from homeassistant.helpers.event import ( #type: ignore[import]
     async_track_time_interval,
@@ -39,25 +38,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
 
-    # Register the Lovelace card after Home Assistant startup to avoid a
-    # race condition in the Lovelace storage manager that can overwrite
-    # existing .storage/lovelace_resources if resources are created too
-    # early during startup. If Home Assistant is already running, run
-    # immediately.
-    card_register = CrealityCardRegistration(hass)
-
-    async def _do_register(_event=None) -> None:
-        try:
-            await card_register.async_register()
-        except Exception as exc:  # non-fatal
-            _LOGGER.warning("Lovelace card registration skipped due to error: %s", exc)
-
-    if hass.state == CoreState.running:
-        # HA already started; register now
-        hass.async_create_task(_do_register())
-    else:
-        # Defer until HA has finished starting up
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, lambda event: hass.async_create_task(_do_register(event)))
+    # Register the Lovelace card (non-fatal on failure)
+    try:
+        card_register = CrealityCardRegistration(hass)
+        await card_register.async_register()
+    except Exception as exc:
+        _LOGGER.warning("Lovelace card registration skipped due to error: %s", exc)
 
     # Listener for options updates
     entry.async_on_unload(entry.add_update_listener(options_update_listener))

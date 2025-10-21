@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Callable
 from .utils import parse_position as _parse_position, safe_float as _safe_float
 
-from homeassistant.components.sensor import (
+from homeassistant.components.sensor import (  # type: ignore[import]
     SensorEntity,
     SensorDeviceClass,
     SensorStateClass,
@@ -505,7 +505,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 # Find the spec for box_temperature
                 spec = next((s for s in SPECS if s.get("uid") == "box_temperature"), None)
                 if spec is not None:
-                    hass.async_create_task(async_add_entities([KSimpleFieldSensor(coord, spec)]))
+                    # Schedule entity addition safely on the event loop
+                    hass.loop.call_soon_threadsafe(async_add_entities, [KSimpleFieldSensor(coord, spec)])
 
         cancel = async_track_time_interval(hass, _capability_check, timedelta(seconds=5))
         try:

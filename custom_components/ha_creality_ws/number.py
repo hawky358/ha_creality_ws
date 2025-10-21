@@ -52,7 +52,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             if has_box:
                 added_box = True
                 # Schedule entity addition on event loop
-                hass.async_create_task(async_add_entities([BoxTargetNumber(coord)]))
+                hass.loop.call_soon_threadsafe(async_add_entities, [BoxTargetNumber(coord)])
                 # Once added, we can stop further checks by cancelling the interval
 
         # Run every 5 seconds for up to ~2 minutes (caller can cancel on unload)
