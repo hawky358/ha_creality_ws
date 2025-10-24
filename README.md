@@ -15,7 +15,7 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 * **Camera:** auto-detects stream type by model:
   - K1/K1C/K1 Max: Direct MJPEG stream via Home Assistant (camera included)
   - K1 SE: MJPEG stream (camera is optional accessory)
-  - K2 family: WebRTC-to-MJPEG conversion (WebRTC stream from printer converted to MJPEG for HA compatibility)
+  - K2 family: **Native WebRTC streaming** using Home Assistant's built-in go2rtc service
   - Ender 3 V3 family: MJPEG stream (camera is optional accessory)
   - Creality Hi: Direct MJPEG stream via Home Assistant (camera included)
 * **Lovelace card**: dependency-free, uses HA fonts, progress ring, contextual chips, telemetry pills.
@@ -41,7 +41,12 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 The integration automatically installs the following Python packages:
 - `websockets>=10.4` - For WebSocket communication with printers
 
-**work-in-progress** For K2 family cameras, the integration will use the go2rtc add-on (built into Home Assistant) for WebRTC-to-MJPEG conversion. No additional Python dependencies are required.
+**Camera Dependencies:**
+- **K1 family cameras**: No additional dependencies required (direct MJPEG streaming)
+- **K2 family cameras**: Requires Home Assistant's built-in **go2rtc** service for native WebRTC streaming
+  - go2rtc is included with Home Assistant core (no HACS installation needed)
+  - Automatically available on `localhost:11984` when Home Assistant is running
+  - Provides native WebRTC streaming without additional Python packages
 
 ---
 
@@ -68,9 +73,9 @@ If auto-detection doesn't choose your preferred stream, you can force it under t
 - **Camera Mode**: 
   - `auto` (default) - Automatically detect based on printer model
   - `mjpeg` - Force direct MJPEG stream (K1 family style)
-  - `webrtc` - Force WebRTC-to-MJPEG conversion (K2 family style)
+  - `webrtc` - Force native WebRTC streaming (K2 family style)
 
-**Note:** When forcing `webrtc` mode, the integration will use WebRTC-to-MJPEG conversion via the go2rtc add-on (built into Home Assistant).
+**Note:** When forcing `webrtc` mode, the integration will use native WebRTC streaming via Home Assistant's built-in go2rtc service.
 
 ---
 
@@ -261,18 +266,22 @@ The theme data is stored per card instance, so each card can have its own unique
   Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
 * **WebRTC camera not working**
   If K2 family cameras show fallback images instead of live video:
-  1. Ensure go2rtc add-on is installed and running in Home Assistant
-  2. Check that the printer's WebRTC signaling endpoint is accessible
-  3. Verify the printer supports WebRTC (K2 family only)
+  1. **Verify go2rtc is running**: Check `http://localhost:11984` in your browser
+  2. **Check go2rtc status**: Visit `http://localhost:11984/api/streams` to see configured streams
+  3. Ensure the printer's WebRTC signaling endpoint is accessible
+  4. Verify the printer supports WebRTC (K2 family only)
+  5. Check Home Assistant logs for WebRTC negotiation errors
+  6. **Note**: go2rtc is included with Home Assistant core - no additional installation needed
 * **K2 camera shows no image**
   - Check that the printer's WebRTC endpoint is accessible
   - Verify the printer model is correctly detected (check logs for "detected K2 family printer")
-  - Ensure go2rtc add-on is running in Home Assistant
+  - Ensure Home Assistant's built-in go2rtc service is running
+  - Check for WebRTC message format errors in logs
 * **Manual camera mode not working**
   - Check logs for "user forced [mode] mode" messages
   - Verify the camera mode is set correctly in the integration's Configure dialog
   - Restart Home Assistant after changing camera mode settings
-  - For `webrtc` mode: ensure go2rtc add-on is running
+  - For `webrtc` mode: ensure Home Assistant's built-in go2rtc service is running
 
 ---
 
@@ -281,18 +290,18 @@ The theme data is stored per card instance, so each card can have its own unique
 - The integration auto-detects the printer model and creates the appropriate camera entity:
   - **K1/K1C/K1 Max**: Direct MJPEG camera (camera included). Works with all Home Assistant camera cards (Picture Glance, Picture Entity, etc.)
   - **K1 SE**: MJPEG camera (optional accessory - gracefully handles when not present)
-  - **K2 family**: WebRTC-to-MJPEG camera. Connects to the printer's WebRTC stream and converts it to MJPEG for Home Assistant compatibility
+  - **K2 family**: **Native WebRTC camera**. Provides native WebRTC streaming using Home Assistant's built-in go2rtc service
   - **Ender 3 V3 family**: MJPEG camera (optional accessory - gracefully handles when not present)
   - **Creality Hi**: Direct MJPEG camera (camera included)
 
-- **WebRTC-to-MJPEG conversion**: For K2 printers, the integration:
-  - Connects to the printer's WebRTC signaling endpoint
-  - Receives video frames from the WebRTC stream
-  - Converts frames to MJPEG format
-  - Provides a standard MJPEG camera entity to Home Assistant
-  - Works with all standard Home Assistant camera cards
+- **Native WebRTC streaming**: For K2 printers, the integration:
+  - Uses Home Assistant's built-in go2rtc service for WebRTC streaming
+  - Configures go2rtc to connect to the printer's WebRTC signaling endpoint
+  - Forwards WebRTC offers/answers between Home Assistant frontend and go2rtc
+  - Provides native WebRTC streaming without additional HACS integrations
+  - Works with all standard Home Assistant camera cards that support WebRTC
 
-- **Dependencies**: WebRTC functionality uses the go2rtc add-on (built into Home Assistant) for stream conversion. Only `websockets` Python package is required.
+- **Dependencies**: WebRTC functionality uses Home Assistant's built-in go2rtc service. Only `websockets` Python package is required.
 
 ---
 
