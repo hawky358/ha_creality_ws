@@ -31,6 +31,12 @@ from .entity import KEntity
 _LOGGER = logging.getLogger(__name__)
 
 
+class _FeatureMask(int):
+    """Custom feature mask that supports the 'in' operator."""
+    def __contains__(self, feature):
+        return bool(self & feature)
+
+
 class _BaseCamera(KEntity, Camera):
     """Common camera helpers (tiny JPEG fallback)."""
 
@@ -168,252 +174,199 @@ class CrealityMjpegCamera(_BaseCamera):
 
 
 class CrealityWebRTCCamera(_BaseCamera):
-    """Lightweight WebRTC camera that exposes signaling URL via attributes.
+    """WebRTC camera that uses go2rtc to convert WebRTC stream to MJPEG.
 
-    Note: Home Assistant core camera entity doesn’t natively render WebRTC.
-    Users typically use `webrtc-card` or `advanced-camera-card` with `webrtc:` URLs
-    provided by go2rtc. We surface the correct URL so UI cards can bind.
+    This camera integrates with Home Assistant's go2rtc instance to:
+    1. Configure go2rtc to pull WebRTC stream from the Creality K2 printer
+    2. Expose the go2rtc MJPEG stream as a native Home Assistant camera
+    3. Provide both static images and streaming capabilities
     """
 
     def __init__(self, coordinator, signaling_url: str, use_proxy: bool = False) -> None:
         super().__init__(coordinator, "Printer Camera", "camera")
-        # Always keep the upstream device signaling URL separate
         self._upstream_signaling_url = signaling_url
-        # Optional proxy path (computed in async_added_to_hass)
-        self._proxy_signaling_url: str | None = None
         self._use_proxy = use_proxy
-        # Hint HA frontend about type when available
-        if StreamType is not None:
-            try:
-                self._attr_frontend_stream_type = StreamType.WEB_RTC  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        # Advertise streaming capability so HA frontend/cards attempt WebRTC
-        self._feature_mask: int = 0
-        if "CameraEntityFeature" in globals() and CameraEntityFeature is not None:  # type: ignore[name-defined]
-            # Build a clear IntFlag including STREAM, WEB_RTC, and ON_DEMAND where available
-            try:
-                stream_flag = getattr(CameraEntityFeature, "STREAM")
-            except Exception:
-                stream_flag = CameraEntityFeature(1)
-            try:
-                webrtc_flag = getattr(CameraEntityFeature, "WEB_RTC")
-            except Exception:
-                webrtc_flag = CameraEntityFeature(FALLBACK_WEBRTC_BIT)
-            try:
-                ondemand_flag = getattr(CameraEntityFeature, "ON_DEMAND")
-            except Exception:
-                ondemand_flag = CameraEntityFeature(0)
-
-            features_flag = stream_flag | webrtc_flag | ondemand_flag
-            flag_details: dict[str, tuple[int | None, str]] = {}
-            for attr in ("STREAM", "WEB_RTC", "ON_DEMAND"):
-                value = getattr(CameraEntityFeature, attr, None)
-                int_value: int | None
-                try:
-                    int_value = int(value) if value is not None else None
-                except Exception:
-                    int_value = None
-                if isinstance(value, CameraEntityFeature):
-                    features_flag |= value
-                    flag_details[attr] = (int_value, repr(value))
-                elif attr == "WEB_RTC":
-                    fallback_flag = CameraEntityFeature(FALLBACK_WEBRTC_BIT)
-                    features_flag |= fallback_flag
-                    flag_details[attr] = (int(fallback_flag), repr(fallback_flag))
-                else:
-                    flag_details[attr] = (int_value, repr(value))
-
-            if not features_flag:
-                # ensure at least STREAM fallback bit is present
-                try:
-                    features_flag = CameraEntityFeature(getattr(CameraEntityFeature, "STREAM"))
-                except Exception:
-                    features_flag = CameraEntityFeature(0)
-
-            try:
-                _LOGGER.warning(
-                    "ha_creality_ws: CameraEntityFeature flags=%s, combined=%r",
-                    flag_details,
-                    features_flag,
-                )
-            except Exception:
-                pass
-
-            self._feature_mask = int(features_flag)
-            # Store the IntFlag instance so HA sees an iterable/flag object
-            self._attr_supported_features = features_flag
-        else:
-            self._feature_mask = 1
-            self._attr_supported_features = 1
+        self._go2rtc_url: str | None = None
+        self._stream_name: str | None = None
         self._last_error: str | None = None
-        # lightweight diagnostics to help validate end-to-end
-        self._last_offer_len: int = 0
-        self._last_answer_len: int = 0
-        self._last_signaling_status: int | None = None
+        
+        # Set up supported features for MJPEG streaming
+        self._setup_supported_features()
+
+    def _setup_supported_features(self) -> None:
+        """Set up camera features for WebRTC cameras with go2rtc streaming."""
+        mask = 0
+        if "CameraEntityFeature" in globals() and CameraEntityFeature is not None:
+            # Include STREAM for MJPEG streaming via go2rtc
+            stream_val = getattr(CameraEntityFeature, "STREAM", None)
+            if stream_val is not None:
+                try:
+                    mask |= int(stream_val)
+                except Exception:
+                    pass
+            
+            # Include ON_DEMAND for static image capability
+            ond_val = getattr(CameraEntityFeature, "ON_DEMAND", None)
+            if ond_val is not None:
+                try:
+                    mask |= int(ond_val)
+                except Exception:
+                    pass
+
+        self._attr_supported_features = _FeatureMask(mask)
+        _LOGGER.info("ha_creality_ws: WebRTC camera features: STREAM=%s, ON_DEMAND=%s, mask=%d", 
+                    bool(mask & 2), bool(mask & 1), mask)  # STREAM is bit 1 (2), ON_DEMAND is bit 0 (1)
 
     async def async_added_to_hass(self) -> None:
-        # If the integration option requested proxying, rewrite signaling_url
-        # to point to HA's proxy endpoint so the browser posts to HA (HTTPS).
+        """Configure go2rtc stream when camera is added to Home Assistant."""
         await super().async_added_to_hass()
-        if self._use_proxy:
-            # Build a relative proxy path so the browser posts to HA (HTTPS), avoiding mixed-content
-            self._proxy_signaling_url = f"/api/ha_creality_ws/webrtc_proxy?entity={self.entity_id}"
-        # Log key configuration for troubleshooting
-        try:
-            sf = self.supported_features
-            _LOGGER.warning(
-                "ha_creality_ws: camera added: supported_features=%s (repr=%r type=%s) mask=%s, frontend_stream_type=%s, upstream_signaling=%s, proxy=%s",
-                sf,
-                repr(sf),
-                type(sf),
-                getattr(self, "_feature_mask", None),
-                getattr(self, "_attr_frontend_stream_type", None),
-                getattr(self, "_upstream_signaling_url", None),
-                getattr(self, "_proxy_signaling_url", None),
-            )
-        except Exception:
-            pass
+        
+        # Get go2rtc URL and configure the stream
+        self._go2rtc_url = await self._get_go2rtc_url()
+        if self._go2rtc_url:
+            await self._configure_go2rtc_stream()
+        else:
+            _LOGGER.warning("ha_creality_ws: go2rtc not available, WebRTC camera will use fallback images")
 
     async def async_camera_image(
         self,
         width: Optional[int] = None,
         height: Optional[int] = None,
     ) -> bytes | None:
-        # Some HA surfaces call this for thumbnails; WebRTC has no snapshot.
-        # Return last-good or tiny placeholder.
+        """Return a single camera image from go2rtc."""
+        if not self._go2rtc_url or not self._stream_name:
+            return await self._fallback_image()
+
+        try:
+            session = async_get_clientsession(self.hass)
+            # Request a single frame from go2rtc using the correct API endpoint
+            # According to the API docs: GET /api/frame.jpeg?src=stream_name
+            image_url = f"{self._go2rtc_url.rstrip('/')}/api/frame.jpeg?src={self._stream_name}"
+            
+            async with session.get(image_url, timeout=5) as response:
+                if response.status == 200:
+                    image_data = await response.read()
+                    if self._is_valid_jpeg(image_data):
+                        self._last_frame = image_data
+                        return image_data
+                    else:
+                        _LOGGER.warning("ha_creality_ws: invalid JPEG from go2rtc")
+                else:
+                    _LOGGER.warning("ha_creality_ws: go2rtc frame returned status %d", response.status)
+        except ClientError as err:
+            _LOGGER.warning("ha_creality_ws: failed to get image from go2rtc: %s", err)
+        except asyncio.TimeoutError:
+            _LOGGER.warning("ha_creality_ws: timeout getting image from go2rtc")
+        except Exception as exc:
+            _LOGGER.warning("ha_creality_ws: unexpected error getting image from go2rtc: %s", exc)
+        
         return await self._fallback_image()
+
+    async def handle_async_mjpeg_stream(self, request):
+        """Return an MJPEG stream from go2rtc."""
+        if not self._go2rtc_url or not self._stream_name:
+            _LOGGER.warning("ha_creality_ws: go2rtc not available for streaming")
+            return web.Response(status=503, text="go2rtc not available")
+
+        try:
+            session = async_get_clientsession(self.hass)
+            # Get MJPEG stream from go2rtc using the correct API endpoint
+            # According to the API docs: GET /api/stream.mjpeg?src=stream_name
+            mjpeg_stream_url = f"{self._go2rtc_url.rstrip('/')}/api/stream.mjpeg?src={self._stream_name}"
+            
+            _LOGGER.debug("ha_creality_ws: proxying MJPEG stream from go2rtc: %s", mjpeg_stream_url)
+            
+            async with session.get(mjpeg_stream_url, timeout=None) as response:
+                if response.status != 200:
+                    _LOGGER.warning("ha_creality_ws: go2rtc MJPEG stream returned status %d", response.status)
+                    return web.Response(status=502, text="Upstream go2rtc stream error")
+
+                # Stream the content directly to the client
+                return web.Response(
+                    status=200,
+                    headers={"Content-Type": "multipart/x-mixed-replace;boundary=--frame"},
+                    body=response.content,
+                )
+        except ClientError as err:
+            _LOGGER.error("ha_creality_ws: failed to proxy go2rtc MJPEG stream: %s", err)
+            return web.Response(status=502, text="Upstream go2rtc stream error")
+        except asyncio.TimeoutError:
+            _LOGGER.error("ha_creality_ws: timeout while proxying go2rtc MJPEG stream")
+            return web.Response(status=504, text="Upstream go2rtc stream timeout")
+        except Exception as exc:
+            _LOGGER.error("ha_creality_ws: unexpected error proxying go2rtc MJPEG stream: %s", exc)
+            return web.Response(status=502, text="Upstream go2rtc stream error")
+
+    async def _get_go2rtc_url(self) -> str | None:
+        """Get the go2rtc URL using built-in Home Assistant features."""
+        try:
+            # go2rtc is a built-in Home Assistant service, always available on localhost:11984
+            # when running as part of Home Assistant core
+            _LOGGER.info("ha_creality_ws: using built-in go2rtc service on localhost:11984")
+            return "http://localhost:11984"
+
+        except Exception as exc:
+            _LOGGER.warning("ha_creality_ws: failed to get go2rtc URL: %s", exc)
+            return None
+
+    async def _configure_go2rtc_stream(self) -> None:
+        """Configure go2rtc to pull the WebRTC stream from the printer using native Creality support."""
+        if not self._go2rtc_url:
+            return
+            
+        # Create a unique stream name for this printer
+        printer_host = self._upstream_signaling_url.split("://")[1].split(":")[0]
+        self._stream_name = f"creality_k2_{printer_host.replace('.', '_')}"
+        
+        # Use the native Creality WebRTC format that go2rtc 1.9.9+ supports
+        # Based on the client_creality.go implementation, go2rtc has built-in support
+        webrtc_printer_url = self._upstream_signaling_url
+        go2rtc_src = f"webrtc:{webrtc_printer_url}"
+        
+        _LOGGER.info("ha_creality_ws: configuring go2rtc stream '%s' with native Creality support: '%s'", 
+                    self._stream_name, go2rtc_src)
+        
+        try:
+            # Use the go2rtc configuration API to add the stream
+            # This is the proper way to configure streams in go2rtc
+            session = async_get_clientsession(self.hass)
+            api_url = f"{self._go2rtc_url.rstrip('/')}/api/config"
+            
+            # Configure the stream in go2rtc's config
+            config_payload = {"streams": {self._stream_name: go2rtc_src}}
+            
+            async with session.post(api_url, json=config_payload, timeout=10) as response:
+                if response.status in [200, 201, 204]:
+                    _LOGGER.info("ha_creality_ws: successfully configured go2rtc stream '%s' with native Creality support", 
+                                self._stream_name)
+                else:
+                    response_text = await response.text()
+                    _LOGGER.warning("ha_creality_ws: go2rtc configuration failed, status: %d, response: %s", 
+                                  response.status, response_text)
+                    self._last_error = f"go2rtc configuration failed: HTTP {response.status}"
+                    
+        except Exception as exc:
+            _LOGGER.error("ha_creality_ws: failed to configure go2rtc stream: %s", exc)
+            self._last_error = f"go2rtc configuration error: {exc}"
 
     @property
     def extra_state_attributes(self) -> dict:
-        # Provide a ready-to-use webrtc-card URL matching existing community setups
-        # Example: webrtc:http://<host>:8000/call/webrtc_local#format=creality
-        # Expose webrtc_url for frontend cards; if proxy is enabled and available, point there.
-        target_for_frontend = self._proxy_signaling_url if (self._use_proxy and self._proxy_signaling_url) else self._upstream_signaling_url
+        """Return extra state attributes for the camera."""
         attrs = {
-            "webrtc_url": f"webrtc:{target_for_frontend}#format=creality",
-            # IMPORTANT: expose upstream signaling_url so the proxy can forward correctly
-            "signaling_url": self._upstream_signaling_url,
-            "webrtc_using_proxy": bool(self._use_proxy and self._proxy_signaling_url),
-            "webrtc_offer_len": self._last_offer_len,
-            "webrtc_answer_len": self._last_answer_len,
-            "webrtc_signaling_status": self._last_signaling_status,
+            "go2rtc_url": self._go2rtc_url,
+            "go2rtc_stream_name": self._stream_name,
+            "upstream_signaling_url": self._upstream_signaling_url,
+            "webrtc_using_proxy": self._use_proxy,
         }
         if self._last_error:
             attrs["error"] = self._last_error
         return attrs
 
-    async def async_get_stream_source(self) -> str | None:  # type: ignore[override]
-        """Return a frontend-usable stream source for this camera.
-
-        We return the webrtc: URL (proxy if enabled) so other integrations that
-        request a source (like the WebRTC helper or proxy) can obtain it. Note
-        that Home Assistant's built-in play_stream service expects HLS/HTTP
-        sources; this integration exposes WebRTC only, so recommend using a
-        webrtc-capable card (webrtc-card) for playback.
-        """
-        target_for_frontend = self._proxy_signaling_url if (self._use_proxy and self._proxy_signaling_url) else self._upstream_signaling_url
-        if not target_for_frontend:
-            return None
-        return f"webrtc:{target_for_frontend}#format=creality"
-
-    async def stream_source(self) -> str | None:  # type: ignore[override]
-        """Async stream source helper used by HA internals/tests.
-
-        HA may call and await camera.stream_source(); provide an async function
-        for compatibility.
-        """
-        try:
-            target_for_frontend = self._proxy_signaling_url if (self._use_proxy and self._proxy_signaling_url) else self._upstream_signaling_url
-            if not target_for_frontend:
-                return None
-            return f"webrtc:{target_for_frontend}#format=creality"
-        except Exception:
-            return None
-
-    async def async_play_stream(self, media_player, format: str = "hls", **kwargs):  # type: ignore[override]
-        """Handle play_stream service calls.
-
-        Home Assistant's play_stream service is HLS-focused. Our camera is
-        WebRTC-only, so we don't provide an HLS stream. Implement a defensive
-        noop so calls don't raise 'does not support play stream service'.
-        """
-        _LOGGER.warning(
-            "ha_creality_ws: play_stream requested for %s with format=%s - WebRTC-only; use a WebRTC-capable card",
-            self.entity_id,
-            format,
-        )
-        # Nothing to stream server-side; return None to indicate no stream was started
-        return None
-
-    @property
-    def supported_features(self):  # type: ignore[override]
-        mask = int(getattr(self, "_feature_mask", self._attr_supported_features))
-
-        class _FeatureMask(int):
-            def __contains__(self, item) -> bool:  # type: ignore[override]
-                try:
-                    return bool(int(self) & int(item))
-                except Exception:
-                    return False
-
-        # Prefer returning a CameraEntityFeature IntFlag when the enum exists
-        if "CameraEntityFeature" in globals() and CameraEntityFeature is not None:
-            try:
-                flag = CameraEntityFeature(mask)
-                return flag
-            except Exception:
-                # Some HA builds may not accept construction; fall back to mask wrapper
-                return _FeatureMask(mask)
-
-        return _FeatureMask(mask)
-
-    async def async_handle_web_rtc_offer(self, offer_sdp: str) -> str | None:  # type: ignore[override]
-        """Forward HA's WebRTC SDP offer to the printer and return the SDP answer.
-
-        Creality's endpoint expects a base64-encoded JSON string with fields {type:"offer", sdp:"..."}.
-        It responds with base64 of the same structure containing the answer SDP.
-        """
-        # Build base64(JSON({type, sdp})) body
-        obj = {"type": "offer", "sdp": offer_sdp}
-        body_b64 = base64.b64encode(json.dumps(obj).encode("utf-8")).decode("ascii")
-
-        session = async_get_clientsession(self.hass)
-        try:
-            self._last_offer_len = len(offer_sdp or "")
-            _LOGGER.warning("ha_creality_ws: async_handle_web_rtc_offer start len=%d upstream=%s", self._last_offer_len, self._upstream_signaling_url)
-            async with session.post(
-                self._upstream_signaling_url,
-                data=body_b64,
-                headers={"Content-Type": "text/plain"},
-                timeout=10,
-            ) as resp:
-                self._last_signaling_status = int(resp.status)
-                _LOGGER.warning("ha_creality_ws: signaling POST returned status=%s content-type=%s", resp.status, resp.content_type)
-                if resp.status != 200:
-                    # Return None to let frontend handle error state
-                    self._last_error = f"signaling HTTP {resp.status}"
-                    return None
-                raw = await resp.read()
-                self._last_answer_len = len(raw or b"")
-                _LOGGER.warning("ha_creality_ws: signaling response length=%d", self._last_answer_len)
-        except Exception as exc:
-            _LOGGER.exception("Signaling error when POSTing to %s: %s", self._upstream_signaling_url, exc)
-            self._last_error = f"signaling error: {exc}"
-            return None
-
-        # Decode base64 -> JSON -> extract answer SDP
-        try:
-            decoded = base64.b64decode(raw)
-            payload = json.loads(decoded.decode("utf-8", "ignore"))
-            _LOGGER.debug("Decoded signaling payload keys=%s", list(payload.keys()))
-            sdp = payload.get("sdp")
-            _LOGGER.debug("Answer SDP len=%d", len(sdp or ""))
-            return sdp
-        except Exception as exc:
-            _LOGGER.exception("Invalid answer from signaling: %s", exc)
-            self._last_error = f"invalid answer: {exc}"
-            return None
+    def _is_valid_jpeg(self, data: bytes) -> bool:
+        """Check if the data is a valid JPEG image."""
+        if not data or len(data) < 20:
+            return False
+        return data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9")
 
 
 async def _probe_webrtc_signaling(hass: HomeAssistant, url: str, timeout: float = 1.5) -> bool:
@@ -466,10 +419,38 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     model = (coord.data or {}).get("model") or ""
     model_l = str(model).lower()
 
-    # Prefer WebRTC for K2 family when indicated by model string
+    # Model detection logic
+    is_k1_family = "k1" in model_l
+    is_k1_se = is_k1_family and "se" in model_l
+    is_k1_max = is_k1_family and "max" in model_l
+    is_k2_family = "k2" in model_l
+    is_k2_base = is_k2_family and not ("pro" in model_l or "plus" in model_l)
+    is_k2_pro = is_k2_family and "pro" in model_l
+    is_k2_plus = is_k2_family and "plus" in model_l
+    is_ender_v3_family = "ender" in model_l and "v3" in model_l
+    is_creality_hi = "hi" in model_l
+
+    # WebRTC cameras (K2 family - always present)
     webrtc_url = WEBRTC_URL_TEMPLATE.format(host=host)
-    if "k2" in model_l:
+    if is_k2_family:
         async_add_entities([CrealityWebRTCCamera(coord, webrtc_url, use_proxy=use_proxy)])
+        return
+
+    # MJPEG cameras with optional handling
+    mjpeg_url = MJPEG_URL_TEMPLATE.format(host=host)
+    
+    # Models with optional cameras (K1 SE, Ender 3 V3 family)
+    if is_k1_se or is_ender_v3_family:
+        try:
+            async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
+        except Exception:
+            # Camera is optional for these models, continue without it
+            pass
+        return
+
+    # Models with default MJPEG cameras (K1 family except SE, K1 Max, Creality Hi)
+    if is_k1_family or is_k1_max or is_creality_hi:
+        async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
         return
 
     # Otherwise, detect WebRTC by probing the signaling endpoint quickly
@@ -477,6 +458,5 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         async_add_entities([CrealityWebRTCCamera(coord, webrtc_url, use_proxy=use_proxy)])
         return
 
-    # Fallback to MJPEG for K1 family
-    mjpeg_url = MJPEG_URL_TEMPLATE.format(host=host)
+    # Fallback to MJPEG
     async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])

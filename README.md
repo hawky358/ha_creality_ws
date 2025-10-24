@@ -13,9 +13,13 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 * **Entities:** status, progress, time left, temperatures (nozzle/bed/chamber), current layer/total layers, etc.
 * **Controls:** pause, resume, stop, light toggle.
 * **Camera:** auto-detects stream type by model:
-  - K1/K1C/K1 Plus: MJPEG proxy via Home Assistant
-  - K2 family: Native WebRTC (no custom card required on recent HA), entity also exposes a ready-to-use `webrtc:` URL attribute
+  - K1/K1C/K1 Max: Direct MJPEG stream via Home Assistant (camera included)
+  - K1 SE: MJPEG stream (camera is optional accessory)
+  - K2 family: WebRTC-to-MJPEG conversion (WebRTC stream from printer converted to MJPEG for HA compatibility)
+  - Ender 3 V3 family: MJPEG stream (camera is optional accessory)
+  - Creality Hi: Direct MJPEG stream via Home Assistant (camera included)
 * **Lovelace card**: dependency-free, uses HA fonts, progress ring, contextual chips, telemetry pills.
+* **Style Editor**: Built-in theme customization with color picker for all card elements.
 
 ---
 
@@ -31,6 +35,17 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 
 1. Copy `custom_components/ha_creality_ws` into `<config>/custom_components/`.
 2. **Restart** Home Assistant.
+
+### Dependencies
+
+The integration automatically installs the following Python packages:
+- `websockets>=10.4` - For WebSocket communication with printers
+- `aiortc>=1.6.0` - For WebRTC support (K2 family cameras)
+- `av>=10.0.0` - Video processing (required by aiortc)
+- `numpy>=1.21.0` - Numerical operations (required by aiortc)
+- `Pillow>=8.0.0` - Image processing (required by aiortc)
+
+**Note:** If you see errors about missing WebRTC dependencies, restart Home Assistant to trigger the automatic installation.
 
 ---
 
@@ -52,9 +67,14 @@ If your printer power is controlled by a smart plug/switch, bind it so the integ
 
 ### 3) Optional: camera mode
 
-If auto-detection doesn’t choose your preferred stream, you can force it under the integration’s Configure dialog:
+If auto-detection doesn't choose your preferred stream, you can force it under the integration's Configure dialog:
 
-- Camera Mode: `auto` (default) | `mjpeg` | `webrtc`
+- **Camera Mode**: 
+  - `auto` (default) - Automatically detect based on printer model
+  - `mjpeg` - Force direct MJPEG stream (K1 family style)
+  - `webrtc` - Force WebRTC-to-MJPEG conversion (K2 family style)
+
+**Note:** When forcing `webrtc` mode, the integration will use WebRTC-to-MJPEG conversion, which requires the WebRTC dependencies (`aiortc`, `av`, etc.) to be installed.
 
 ---
 
@@ -172,36 +192,195 @@ stop_btn: button.k1c_stop_print
 
 ---
 
+## Style Editor
+
+The card includes a built-in **Style Editor** that allows you to customize the appearance of all card elements. Access it through the card editor's **Theme** tab.
+
+### Features
+
+* **Interactive Color Picker**: Click on any element to open a color picker
+* **Live Preview**: See changes applied immediately to the card
+* **Theme Persistence**: Customizations are saved and persist across integration updates
+* **Auto Mode**: Status and telemetry elements can inherit Home Assistant theme colors
+* **Reset to Defaults**: One-click reset to restore original styling
+
+### Customizable Elements
+
+#### Button Colors
+- **Pause Button**: Background and icon colors
+- **Resume Button**: Background and icon colors  
+- **Stop Button**: Background and icon colors
+- **Light Button**: Background and icon colors (separate for on/off states)
+  - Light On Background & Icon
+  - Light Off Background & Icon
+
+#### Status Elements
+- **Status Icon**: Color (auto mode inherits theme colors)
+- **Progress Ring**: Color (auto mode inherits theme colors)
+- **Status Background**: Background color (auto mode uses card background)
+
+#### Telemetry Elements
+- **Telemetry Icons**: Color (auto mode inherits secondary text color)
+- **Telemetry Text**: Color (auto mode inherits primary text color)
+
+### Usage
+
+1. **Open Card Editor**: Click the card's menu (⋮) → **Edit**
+2. **Switch to Theme Tab**: Click the **Theme** tab in the editor
+3. **Customize Colors**: 
+   - Click on any element to open its color picker
+   - Use the color preview square to open the native color picker
+   - Type hex codes directly (e.g., `#ff0000`)
+   - Type `auto` to inherit Home Assistant theme colors
+4. **Save Changes**: Click **Save** on the color picker, then **Save** on the card
+5. **Reset**: Use the **Reset to Defaults** button to restore original styling
+
+### Color Formats
+
+- **Hex Colors**: Use standard hex format (e.g., `#ff0000`, `#00ff00`)
+- **Auto Mode**: Type `auto` to inherit Home Assistant theme colors
+- **Theme Integration**: Auto mode automatically adapts to light/dark themes
+
+### Persistence
+
+Your customizations are automatically saved and will persist across:
+- Home Assistant restarts
+- Integration updates
+- Dashboard reloads
+
+The theme data is stored per card instance, so each card can have its own unique styling.
+
+---
+
 ## Troubleshooting
 
-* **“Configuration error” in picker or blank card**
+* **"Configuration error" in picker or blank card**
   Hard refresh Lovelace. Verify the resource exists (see *Resource registration*). Ensure the element type is `custom:k-printer-card`.
 * **Controls do nothing**
   Confirm the `pause_btn`, `resume_btn`, `stop_btn` entities exist and are `button.*`. The card calls `button.press`.
   Confirm the light entity domain is `switch` or `light`.
 * **Wrong states when powered off**
-  Set the **Power Switch** in the integration’s Configure dialog.
+  Set the **Power Switch** in the integration's Configure dialog.
 * **Resource missing in storage mode**
   Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
+* **WebRTC dependencies not available**
+  If you see errors about missing `aiortc`, `av`, or other WebRTC dependencies:
+  1. Restart Home Assistant to trigger automatic dependency installation
+  2. Check the Home Assistant logs for dependency installation progress
+  3. Ensure your Home Assistant installation has internet access for package downloads
+* **K2 camera shows no image**
+  - Check that the printer's WebRTC endpoint is accessible
+  - Verify the printer model is correctly detected (check logs for "detected K2 family printer")
+  - Ensure WebRTC dependencies are installed (see above)
+* **Manual camera mode not working**
+  - Check logs for "user forced [mode] mode" messages
+  - Verify the camera mode is set correctly in the integration's Configure dialog
+  - Restart Home Assistant after changing camera mode settings
+  - For `webrtc` mode: ensure WebRTC dependencies are installed
 
 ---
 
-## Camera specifics (K1 vs K2)
+## Camera specifics by model
 
-- The integration probes the printer and creates the appropriate camera entity:
-  - K1/K1C/K1 Plus: MJPEG camera. Works with core cards like Picture Glance.
-  - K2 family: WebRTC camera. Home Assistant can show this stream with WebRTC-capable cards
-    such as `webrtc-card` or `advanced-camera-card`.
+- The integration auto-detects the printer model and creates the appropriate camera entity:
+  - **K1/K1C/K1 Max**: Direct MJPEG camera (camera included). Works with all Home Assistant camera cards (Picture Glance, Picture Entity, etc.)
+  - **K1 SE**: MJPEG camera (optional accessory - gracefully handles when not present)
+  - **K2 family**: WebRTC-to-MJPEG camera. Connects to the printer's WebRTC stream and converts it to MJPEG for Home Assistant compatibility
+  - **Ender 3 V3 family**: MJPEG camera (optional accessory - gracefully handles when not present)
+  - **Creality Hi**: Direct MJPEG camera (camera included)
 
-- For WebRTC cameras, the entity includes attributes:
-  - `webrtc_url`: e.g. `webrtc:http://<printer-ip>:8000/call/webrtc_local#format=creality`
-  You can paste this URL into your WebRTC card configuration.
+- **WebRTC-to-MJPEG conversion**: For K2 printers, the integration:
+  - Connects to the printer's WebRTC signaling endpoint
+  - Receives video frames from the WebRTC stream
+  - Converts frames to MJPEG format
+  - Provides a standard MJPEG camera entity to Home Assistant
+  - Works with all standard Home Assistant camera cards
+
+- **Dependencies**: WebRTC functionality requires `aiortc`, `av`, `numpy`, and `Pillow` packages, which are automatically installed by Home Assistant when the integration is loaded.
 
 ---
 
 ## Status / Testing
 
-Currently verified on **Creality K1C**. Other K-series models may work but are unverified.
+Currently verified on:
+- **Creality K1C** - Full functionality including box temperature and light controls
+- **Creality Ender 3 V3 KE** - Full functionality (no box temperature or light controls, optional camera)
+
+## Supported Models
+
+### K1 Family
+- **K1** - Box temperature sensor & control, light, MJPEG camera
+- **K1C** - Box temperature sensor only (no control), light, MJPEG camera  
+- **K1 SE** - No box temperature, no light, optional MJPEG camera
+- **K1 Max** - Box temperature sensor & control, light, MJPEG camera
+
+### K2 Family
+- **K2** - Box temperature sensor only (no control), light, WebRTC camera
+- **K2 Pro** - Box temperature sensor & control, light, WebRTC camera
+- **K2 Plus** - Box temperature sensor & control, light, WebRTC camera
+
+### Ender 3 V3 Family
+- **Ender 3 V3** - No box temperature, no light, optional MJPEG camera
+- **Ender 3 V3 KE** - No box temperature, no light, optional MJPEG camera
+- **Ender 3 V3 Plus** - No box temperature, no light, optional MJPEG camera
+
+### Other Models
+- **Creality Hi** - Box temperature sensor & control, light, MJPEG camera
+
+Other K-series models may work but are unverified.
+
+---
+
+## Diagnostic Service
+
+The integration provides a diagnostic service to help with troubleshooting and understanding what data different printer models send via WebSocket.
+
+### Usage
+
+1. Go to **Developer Tools** → **Services**
+2. Select service: `ha_creality_ws.diagnostic_dump`
+3. Click **Call Service**
+4. **Copy the diagnostic data** from the service response in the UI
+
+The service will return the complete diagnostic data in the response that you can copy and paste directly. The data is also saved to a file in your Home Assistant config directory as a backup.
+
+**Service Response includes:**
+
+- **Complete WebSocket telemetry data** from all connected printers
+- **Model detection results** showing how each printer is classified
+- **Feature detection results** showing which features are enabled/disabled
+- **Printer status information** (availability, power state, etc.)
+- **Home Assistant and integration version information**
+
+### What's Included
+
+The diagnostic file contains:
+- All raw telemetry data received from the printer
+- Model detection logic results (K1, K2, Ender 3 V3, etc.)
+- Feature detection results (camera type, light, box temperature, etc.)
+- Connection status and timing information
+- Integration configuration details
+
+### Sharing Diagnostic Data
+
+The diagnostic data can be safely shared with developers for troubleshooting. It contains only telemetry data and configuration information - no sensitive personal data.
+
+**How to share:**
+1. Call the service as described above
+2. Copy the `diagnostic_data` field from the service response
+3. Paste it into a text file or share directly with developers
+
+**Service Response Format:**
+```json
+{
+  "diagnostic_data": "{...complete JSON data...}",
+  "file_path": "/config/creality_diagnostic_20241220_143022.json",
+  "data_size": 12345,
+  "printers_count": 1
+}
+```
+
+**Note**: The data is also saved to a file in your Home Assistant config directory as a backup, but the UI response is the primary way to access it.
 
 ---
 

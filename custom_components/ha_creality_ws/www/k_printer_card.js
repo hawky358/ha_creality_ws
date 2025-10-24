@@ -5,6 +5,81 @@ const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const mdi = (name) => `mdi:${name}`;
 const normStr = (x) => String(x ?? "").toLowerCase();
 
+// Theme persistence utilities
+const THEME_STORAGE_KEY = "k-printer-card-themes";
+
+// Color conversion utilities
+function rgbaToHex(rgba) {
+  if (!rgba || rgba.startsWith('#')) return rgba;
+  
+  // Handle rgba() format
+  const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+  if (match) {
+    const r = parseInt(match[1]);
+    const g = parseInt(match[2]);
+    const b = parseInt(match[3]);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  }
+  
+  // Handle CSS variables
+  if (rgba.startsWith('var(')) {
+    return '#000000'; // fallback
+  }
+  
+  return '#000000';
+}
+
+function hexToRgba(hex, alpha = 1) {
+  if (!hex || !hex.startsWith('#')) return hex;
+  
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Save theme configuration to localStorage for persistence across card updates
+ * @param {string} cardId - Unique identifier for the card
+ * @param {Object} theme - Theme configuration object
+ */
+function saveThemeToStorage(cardId, theme) {
+  try {
+    const themes = JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) || "{}");
+    themes[cardId] = theme;
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(themes));
+  } catch (e) {
+    console.warn("Failed to save theme to localStorage:", e);
+  }
+}
+
+/**
+ * Load theme configuration from localStorage
+ * @param {string} cardId - Unique identifier for the card
+ * @returns {Object|null} Theme configuration or null if not found
+ */
+function loadThemeFromStorage(cardId) {
+  try {
+    const themes = JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) || "{}");
+    return themes[cardId] || null;
+  } catch (e) {
+    console.warn("Failed to load theme from localStorage:", e);
+    return null;
+  }
+}
+
+/**
+ * Generate a unique card ID based on configuration
+ * @param {Object} config - Card configuration
+ * @returns {string} Unique card identifier
+ */
+function generateCardId(config) {
+  // Generate a unique ID based on the card configuration
+  const key = `${config.name || "printer"}-${config.status || "unknown"}`;
+  return btoa(key).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
+}
+
 function fmtTimeLeft(seconds) {
   const s = Number(seconds) || 0;
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -39,29 +114,118 @@ class KPrinterCard extends HTMLElement {
       nozzle: "", bed: "", box: "",
       layer: "", total_layers: "",
       light: "", pause_btn: "", resume_btn: "", stop_btn: "",
+      // Theme customization options
+      theme: {
+        // Button backgrounds
+        pause_bg: "rgba(252, 109, 9, .90)",
+        resume_bg: "rgba(76, 175, 80, .90)",
+        stop_bg: "rgba(244, 67, 54, .95)",
+        light_on_bg: "rgba(255, 235, 59, .95)",
+        light_off_bg: "rgba(150,150,150,.35)",
+        // Button icon colors
+        pause_icon: "#fff",
+        resume_icon: "#fff",
+        stop_icon: "#fff",
+        light_icon_on: "#000",
+        light_icon_off: "#000",
+        // Status icon and progress circle
+        status_icon: "auto", // auto, or specific color
+        progress_ring: "auto", // auto, or specific color
+        status_bg: "auto", // auto (transparent), or specific color
+        // Telemetry colors
+        telemetry_icon: "auto", // auto (inherit theme), or specific color
+        telemetry_text: "auto" // auto (inherit theme), or specific color
+      }
     };
   }
-  static getConfigElement() { return document.createElement(EDITOR_TAG); }
+  static getConfigElement() { 
+    const editor = document.createElement(EDITOR_TAG);
+    return editor;
+  }
 
   setConfig(config) {
-    this._cfg = { ...KPrinterCard.getStubConfig(), ...(config || {}) };
+    const defaultConfig = KPrinterCard.getStubConfig();
+    this._cfg = { ...defaultConfig, ...(config || {}) };
+    
+    // Generate card ID for theme persistence
+    this._cardId = generateCardId(this._cfg);
+    
+    // Load saved theme if no theme is provided in config
+    if (!config?.theme) {
+      const savedTheme = loadThemeFromStorage(this._cardId);
+      if (savedTheme) {
+        this._cfg.theme = { ...defaultConfig.theme, ...savedTheme };
+      }
+    } else {
+      // Deep merge theme configuration
+      this._cfg.theme = { ...defaultConfig.theme, ...config.theme };
+      // Save theme to storage
+      saveThemeToStorage(this._cardId, this._cfg.theme);
+    }
+    
     if (!this._root) {
       this._root = this.attachShadow({ mode: "open" });
-      this._render();
-    } else {
-      this._render();
     }
+    
+    // Always re-render when config changes to apply new theme
+      this._render();
+    
+    // Apply theme after render to ensure DOM is ready
+    this._applyTheme();
   }
+  _applyTheme() {
+    if (!this._root || !this._cfg.theme) {
+      return;
+    }
+    
+    // Re-render with updated CSS to apply theme changes
+    this._render();
+  }
+
   set hass(hass) {
     this._hass = hass;
-    if (this._root) this._update();
+    if (this._root) {
+      // Apply theme first, then update
+      this._applyTheme();
+      this._update();
+    }
   }
   getCardSize() { return 3; }
 
   _render() {
     if (!this._root) return;
 
+    // Ensure theme is always properly initialized
+    const defaultConfig = KPrinterCard.getStubConfig();
+    this._cfg.theme = { ...defaultConfig.theme, ...(this._cfg.theme || {}) };
+    
+    // Apply theme variables to CSS custom properties
+    const theme = this._cfg.theme;
+    
+    // Theme CSS custom properties - embedded directly in CSS
+    const themeCSS = `
+      :host {
+        --pause-bg: ${theme.pause_bg || 'rgba(252, 109, 9, .90)'};
+        --resume-bg: ${theme.resume_bg || 'rgba(76, 175, 80, .90)'};
+        --stop-bg: ${theme.stop_bg || 'rgba(244, 67, 54, .95)'};
+        --light-on-bg: ${theme.light_on_bg || 'rgba(255, 235, 59, .95)'};
+        --light-off-bg: ${theme.light_off_bg || 'rgba(150,150,150,.35)'};
+        --pause-icon: ${theme.pause_icon || '#fff'};
+        --resume-icon: ${theme.resume_icon || '#fff'};
+        --stop-icon: ${theme.stop_icon || '#fff'};
+        --light-icon-on: ${theme.light_icon_on || '#000'};
+        --light-icon-off: ${theme.light_icon_off || '#000'};
+        --status-bg: ${theme.status_bg === 'auto' ? 'radial-gradient(var(--card-background-color) 62%, transparent 0)' : (theme.status_bg || 'radial-gradient(var(--card-background-color) 62%, transparent 0)')};
+        --telemetry-icon: ${theme.telemetry_icon === 'auto' ? 'var(--secondary-text-color)' : (theme.telemetry_icon || 'var(--secondary-text-color)')};
+        --telemetry-text: ${theme.telemetry_text === 'auto' ? 'var(--primary-text-color)' : (theme.telemetry_text || 'var(--primary-text-color)')};
+      }
+    `;
+    
+
     const style = `
+      /* Theme CSS custom properties */
+      ${themeCSS}
+      
       /* inherit HA fonts & typography */
       :host { font: inherit; color: var(--primary-text-color); }
 
@@ -92,7 +256,7 @@ class KPrinterCard extends HTMLElement {
       /* icon + progress ring */
       .shape { position:relative; width:40px; height:40px; border-radius:50%;
         display:grid; place-items:center;
-        background: radial-gradient(var(--card-background-color) 62%, transparent 0);
+        background: var(--status-bg, radial-gradient(var(--card-background-color) 62%, transparent 0));
       }
       .ring { position:absolute; inset:0; border-radius:50%;
         mask: radial-gradient(circle at 50% 50%, transparent 54%, black 55%);
@@ -120,11 +284,11 @@ class KPrinterCard extends HTMLElement {
       }
       .chip[hidden]{ display:none !important; }
       .chip:active { transform: translateY(1px); }
-      .chip.danger { --chip-bg: rgba(244, 67, 54, .95); --chip-fg:#fff; }
-      .chip.warn   { --chip-bg: rgba(252, 109, 9, .90);  --chip-fg:#fff; }
-      .chip.ok     { --chip-bg: rgba(76, 175, 80, .90);  --chip-fg:#fff; }
-      .chip.light-on  { --chip-bg: rgba(255, 235, 59, .95); }
-      .chip.light-off { --chip-bg: rgba(150,150,150,.35); }
+      .chip.danger { --chip-bg: var(--stop-bg, rgba(244, 67, 54, .95)); --chip-fg: var(--stop-icon, #fff); }
+      .chip.warn   { --chip-bg: var(--pause-bg, rgba(252, 109, 9, .90));  --chip-fg: var(--pause-icon, #fff); }
+      .chip.ok     { --chip-bg: var(--resume-bg, rgba(76, 175, 80, .90));  --chip-fg: var(--resume-icon, #fff); }
+      .chip.light-on  { --chip-bg: var(--light-on-bg, rgba(255, 235, 59, .95)); --chip-fg: var(--light-icon-on, #000); }
+      .chip.light-off { --chip-bg: var(--light-off-bg, rgba(150,150,150,.35)); --chip-fg: var(--light-icon-off, #000); }
 
       /* telemetry row – single line, same right padding, tighter pills */
       .telemetry {
@@ -142,8 +306,9 @@ class KPrinterCard extends HTMLElement {
         background:rgba(127,127,127,.12);
         font-size:.8rem; border:1px solid rgba(255,255,255,0.08);
         white-space:nowrap; flex:0 0 auto;
+        color: var(--telemetry-text, var(--primary-text-color));
       }
-      .pill ha-icon { --mdc-icon-size:16px; width:16px; height:16px; }
+      .pill ha-icon { --mdc-icon-size:16px; width:16px; height:16px; color: var(--telemetry-icon, var(--secondary-text-color)); }
 
       .click { cursor:pointer; }
 
@@ -257,10 +422,13 @@ class KPrinterCard extends HTMLElement {
     // Icon & ring
     const iconEl = this._root.getElementById("icon");
     iconEl.setAttribute("icon", computeIcon(status));
-    iconEl.style.setProperty("--icon-color", computeColor(status));
+    const theme = this._cfg.theme || {};
+    const iconColor = theme.status_icon === "auto" ? computeColor(status) : theme.status_icon;
+    iconEl.style.setProperty("--icon-color", iconColor);
     const ring = this._root.getElementById("ring");
     ring.style.setProperty("--ring-pct", isPrinting || isPaused ? `${pct}%` : "0%");
-    ring.style.setProperty("--ring-color", computeColor(status));
+    const ringColor = theme.progress_ring === "auto" ? computeColor(status) : theme.progress_ring;
+    ring.style.setProperty("--ring-color", ringColor);
 
     // Chips
     this._root.getElementById("pause").hidden = !isPrinting;
@@ -285,27 +453,359 @@ class KPrinterCard extends HTMLElement {
 }
 customElements.define(CARD_TAG, KPrinterCard);
 
-/* Simple editor */
+/* Interactive theme editor */
 class KPrinterCardEditor extends HTMLElement {
-  set hass(hass) { this._hass = hass; if (this._form) this._form.hass = hass; }
-  setConfig(config) { this._cfg = { ...KPrinterCard.getStubConfig(), ...(config || {}) }; this._render(); }
-  connectedCallback() { if (!this._root) { this._root = this.attachShadow({ mode: "open" }); this._render(); } }
-  _render() {
-    if (!this._root) return;
-    if (!this._form) {
-      this._root.innerHTML = `<ha-form id="f"></ha-form>`;
-      this._form = this._root.getElementById("f");
-      this._form.hass = this._hass;
-      this._form.addEventListener("value-changed", (ev) => {
-        const val = ev.detail?.value || {};
-        this._cfg = val;
-        clearTimeout(this._t);
-        this._t = setTimeout(() => {
-          this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: val } }));
-        }, 120);
-      });
+  set hass(hass) { this._hass = hass; if (this._entitiesForm) this._entitiesForm.hass = hass; }
+  setConfig(config) { 
+    const defaultConfig = KPrinterCard.getStubConfig();
+    this._cfg = { ...defaultConfig, ...(config || {}) };
+    
+    // Always ensure theme is properly initialized
+    this._cfg.theme = { ...defaultConfig.theme, ...(this._cfg.theme || {}) };
+    
+    if (this._root) {
+      this._render(); 
     }
-    this._form.schema = [
+  }
+  connectedCallback() { if (!this._root) { this._root = this.attachShadow({ mode: "open" }); this._render(); } }
+  
+  _render() {
+    if (!this._root || !this._cfg) return;
+    
+    try {
+    
+    const style = `
+      :host { display: block; }
+      .editor-container { padding: 16px; max-width: 1200px; margin: 0 auto; }
+      .tabs { display: flex; border-bottom: 1px solid var(--divider-color); margin-bottom: 16px; }
+      .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; }
+      .tab.active { border-bottom-color: var(--primary-color); color: var(--primary-color); }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+      
+      .theme-editor { display: block; }
+      
+      .theme-controls { 
+        display: flex; 
+        flex-direction: column; 
+        gap: 16px;
+      }
+      
+      .control-group {
+        background: var(--card-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      
+      .group-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--primary-text-color);
+      }
+      
+      .clickable-element {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 4px 0;
+        transition: all 0.2s;
+      }
+      
+      .clickable-element:hover {
+        border-color: var(--primary-color);
+        background: rgba(var(--rgb-primary-color), 0.1);
+      }
+      
+      .element-preview {
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        border: 1px solid var(--divider-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+      }
+      
+      .element-label {
+        font-size: 12px;
+        color: var(--primary-text-color);
+        flex: 1;
+      }
+      
+      .color-picker-inline {
+        background: var(--card-background-color, #ffffff);
+        border: 1px solid var(--divider-color, #ccc);
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        display: none;
+        position: relative;
+        z-index: 10;
+      }
+      
+      .color-picker-inline.active {
+        display: block;
+      }
+      
+      
+      .reset-btn { 
+        background: var(--error-color);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 16px;
+        width: 100%;
+      }
+      
+      .reset-btn:hover {
+        opacity: 0.8;
+      }
+    `;
+    
+    this._root.innerHTML = `
+      <style>${style}</style>
+      <div class="editor-container">
+        <div class="tabs">
+          <div class="tab active" data-tab="entities">Entities</div>
+          <div class="tab" data-tab="theme">Theme</div>
+        </div>
+        
+        <div class="tab-content active" id="entities-tab">
+          <ha-form id="entities-form"></ha-form>
+        </div>
+        
+        <div class="tab-content" id="theme-tab">
+          <div class="theme-editor">
+            <div class="theme-controls">
+              <div class="control-group">
+                <div class="group-title">Action Buttons</div>
+                <div class="clickable-element" data-theme="pause_bg" data-label="Pause Button Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.pause_bg}"></div>
+                  <div class="element-label">Pause Button Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-pause_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.pause_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.pause_bg)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="pause_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="pause_icon" data-label="Pause Button Icon">
+                  <div class="element-preview" style="background: ${this._cfg.theme.pause_icon}; color: ${this._cfg.theme.pause_icon}">⏸</div>
+                  <div class="element-label">Pause Button Icon</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-pause_icon">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.pause_icon)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.pause_icon)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="pause_icon" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="resume_bg" data-label="Resume Button Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.resume_bg}"></div>
+                  <div class="element-label">Resume Button Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-resume_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.resume_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.resume_bg)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="resume_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="resume_icon" data-label="Resume Button Icon">
+                  <div class="element-preview" style="background: ${this._cfg.theme.resume_icon}; color: ${this._cfg.theme.resume_icon}">▶</div>
+                  <div class="element-label">Resume Button Icon</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-resume_icon">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.resume_icon)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.resume_icon)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="resume_icon" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="stop_bg" data-label="Stop Button Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.stop_bg}"></div>
+                  <div class="element-label">Stop Button Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-stop_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.stop_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.stop_bg)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="stop_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="stop_icon" data-label="Stop Button Icon">
+                  <div class="element-preview" style="background: ${this._cfg.theme.stop_icon}; color: ${this._cfg.theme.stop_icon}">⏹</div>
+                  <div class="element-label">Stop Button Icon</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-stop_icon">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.stop_icon)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.stop_icon)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="stop_icon" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="light_on_bg" data-label="Light On Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.light_on_bg}"></div>
+                  <div class="element-label">Light On Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-light_on_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.light_on_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.light_on_bg)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="light_on_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="light_off_bg" data-label="Light Off Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.light_off_bg}"></div>
+                  <div class="element-label">Light Off Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-light_off_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.light_off_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.light_off_bg)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="light_off_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="light_icon_on" data-label="Light Button Icon (On)">
+                  <div class="element-preview" style="background: ${this._cfg.theme.light_icon_on}; color: ${this._cfg.theme.light_icon_on}">💡</div>
+                  <div class="element-label">Light Button Icon (On)</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-light_icon_on">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.light_icon_on)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.light_icon_on)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="light_icon_on" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="light_icon_off" data-label="Light Button Icon (Off)">
+                  <div class="element-preview" style="background: ${this._cfg.theme.light_icon_off}; color: ${this._cfg.theme.light_icon_off}">💡</div>
+                  <div class="element-label">Light Button Icon (Off)</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-light_icon_off">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${rgbaToHex(this._cfg.theme.light_icon_off)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${rgbaToHex(this._cfg.theme.light_icon_off)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="light_icon_off" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="control-group">
+                <div class="group-title">Status Area</div>
+                <div class="clickable-element" data-theme="status_icon" data-label="Status Icon Color">
+                  <div class="element-preview" style="background: ${this._cfg.theme.status_icon === 'auto' ? 'var(--primary-color)' : this._cfg.theme.status_icon}">🖨</div>
+                  <div class="element-label">Status Icon Color</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-status_icon">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${this._cfg.theme.status_icon === 'auto' ? '#000000' : rgbaToHex(this._cfg.theme.status_icon)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${this._cfg.theme.status_icon === 'auto' ? 'auto' : rgbaToHex(this._cfg.theme.status_icon)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="status_icon" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="progress_ring" data-label="Progress Ring Color">
+                  <div class="element-preview" style="background: ${this._cfg.theme.progress_ring === 'auto' ? 'var(--primary-color)' : this._cfg.theme.progress_ring}">⭕</div>
+                  <div class="element-label">Progress Ring Color</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-progress_ring">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${this._cfg.theme.progress_ring === 'auto' ? '#000000' : rgbaToHex(this._cfg.theme.progress_ring)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${this._cfg.theme.progress_ring === 'auto' ? 'auto' : rgbaToHex(this._cfg.theme.progress_ring)}" placeholder="#000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="progress_ring" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="status_bg" data-label="Status Background">
+                  <div class="element-preview" style="background: ${this._cfg.theme.status_bg}">🎯</div>
+                  <div class="element-label">Status Background</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-status_bg">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${this._cfg.theme.status_bg === 'auto' ? 'var(--card-background-color)' : rgbaToHex(this._cfg.theme.status_bg)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${this._cfg.theme.status_bg === 'auto' ? 'auto' : rgbaToHex(this._cfg.theme.status_bg)}" placeholder="auto or #000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="status_bg" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="control-group">
+                <div class="group-title">Telemetry</div>
+                <div class="clickable-element" data-theme="telemetry_icon" data-label="Telemetry Icon Color">
+                  <div class="element-preview" style="background: ${this._cfg.theme.telemetry_icon}">🌡</div>
+                  <div class="element-label">Telemetry Icon Color</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-telemetry_icon">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${this._cfg.theme.telemetry_icon === 'auto' ? 'var(--secondary-text-color)' : rgbaToHex(this._cfg.theme.telemetry_icon)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${this._cfg.theme.telemetry_icon === 'auto' ? 'auto' : rgbaToHex(this._cfg.theme.telemetry_icon)}" placeholder="auto or #000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="telemetry_icon" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+                <div class="clickable-element" data-theme="telemetry_text" data-label="Telemetry Text Color">
+                  <div class="element-preview" style="background: ${this._cfg.theme.telemetry_text}">📝</div>
+                  <div class="element-label">Telemetry Text Color</div>
+                </div>
+                <div class="color-picker-inline" id="color-picker-telemetry_text">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="color-preview" style="width: 30px; height: 30px; border: 2px solid #ccc; border-radius: 4px; background: ${this._cfg.theme.telemetry_text === 'auto' ? 'var(--primary-text-color)' : rgbaToHex(this._cfg.theme.telemetry_text)}; cursor: pointer;" title="Click to open color picker"></div>
+                    <input type="text" class="color-text" value="${this._cfg.theme.telemetry_text === 'auto' ? 'auto' : rgbaToHex(this._cfg.theme.telemetry_text)}" placeholder="auto or #000000" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                    <button class="save-color-btn" data-theme="telemetry_text" style="padding: 6px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Save</button>
+                  </div>
+                </div>
+              </div>
+              
+              <button class="reset-btn" id="reset-theme">Reset to Defaults</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    this._setupTabs();
+    this._setupEntitiesForm();
+    this._setupThemeEditor();
+    
+    } catch (error) {
+      console.error('Error rendering K-Printer Card Editor:', error);
+      this._root.innerHTML = `
+        <div style="padding: 16px; color: var(--error-color);">
+          <h3>Editor Error</h3>
+          <p>There was an error loading the visual editor. You can still edit your configuration using YAML.</p>
+          <p>Error: ${error.message}</p>
+        </div>
+      `;
+    }
+  }
+  
+  _setupTabs() {
+    const tabs = this._root.querySelectorAll('.tab');
+    const contents = this._root.querySelectorAll('.tab-content');
+    
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        contents.forEach(c => c.classList.remove('active'));
+        
+        tab.classList.add('active');
+        const tabId = tab.dataset.tab + '-tab';
+        this._root.getElementById(tabId).classList.add('active');
+      });
+    });
+  }
+  
+  _setupEntitiesForm() {
+    this._entitiesForm = this._root.getElementById('entities-form');
+    this._entitiesForm.hass = this._hass;
+    this._entitiesForm.schema = [
       { name: "name",         label: "Printer Name", selector: { text: {} } },
       { name: "camera",       label: "Camera", selector: { entity: { domain: "camera" } } },
       { name: "status",       label: "Print Status Sensor", selector: { entity: { domain: "sensor" } } },
@@ -321,7 +821,299 @@ class KPrinterCardEditor extends HTMLElement {
       { name: "resume_btn",   label: "Resume Button", selector: { entity: { domain: "button" } } },
       { name: "stop_btn",     label: "Stop Button", selector: { entity: { domain: "button" } } },
     ];
-    this._form.data = this._cfg;
+    this._entitiesForm.data = this._cfg;
+    
+    this._entitiesForm.addEventListener("value-changed", (ev) => {
+      const val = ev.detail?.value || {};
+      this._cfg = { ...this._cfg, ...val };
+      this._dispatchConfigChange();
+    });
+  }
+  
+  _setupThemeEditor() {
+    // Setup clickable elements to toggle inline color pickers
+    const clickableElements = this._root.querySelectorAll('.clickable-element');
+    clickableElements.forEach(element => {
+      element.addEventListener('click', () => {
+        const themeKey = element.dataset.theme;
+        this._toggleColorPicker(themeKey);
+      });
+    });
+    
+    // Setup color picker interactions
+    this._setupColorPickerInteractions();
+    
+    // Setup reset button
+    this._root.getElementById('reset-theme').addEventListener('click', () => {
+      const defaultConfig = KPrinterCard.getStubConfig();
+      this._cfg.theme = { ...defaultConfig.theme };
+      
+      // Clear saved theme from storage
+      const cardId = generateCardId(this._cfg);
+      try {
+        const themes = JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) || "{}");
+        delete themes[cardId];
+        localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(themes));
+      } catch (e) {
+        console.warn("Failed to clear theme from localStorage:", e);
+      }
+      
+      this._updateThemeControls();
+      this._dispatchConfigChange();
+    });
+  }
+  
+  _toggleColorPicker(themeKey) {
+    const picker = this._root.getElementById(`color-picker-${themeKey}`);
+    if (!picker) return;
+    
+    // If this picker is already active, close it
+    if (picker.classList.contains('active')) {
+      picker.classList.remove('active');
+      return;
+    }
+    
+    // Hide all other color pickers
+    const allPickers = this._root.querySelectorAll('.color-picker-inline');
+    allPickers.forEach(p => {
+      p.classList.remove('active');
+    });
+    
+    // Show the clicked color picker
+    picker.classList.add('active');
+  }
+  
+  _setupColorPickerInteractions() {
+    // Setup color preview clicks to open native color picker
+    const colorPreviews = this._root.querySelectorAll('.color-preview');
+    colorPreviews.forEach(preview => {
+      preview.addEventListener('click', () => {
+        const picker = preview.closest('.color-picker-inline');
+        if (picker) {
+          const textInput = picker.querySelector('.color-text');
+          if (textInput) {
+            // Create a visible color input that stays in the editor
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.value = textInput.value === 'auto' ? '#000000' : textInput.value;
+            
+            // Style the input to be visible and positioned within the picker
+            input.style.position = 'absolute';
+            input.style.left = '0';
+            input.style.top = '0';
+            input.style.width = '100%';
+            input.style.height = '100%';
+            input.style.opacity = '0';
+            input.style.cursor = 'pointer';
+            input.style.zIndex = '10';
+            
+            // Add the input to the picker container
+            picker.style.position = 'relative';
+            picker.appendChild(input);
+            
+            // Focus and click the input
+            input.focus();
+            input.click();
+            
+            // Handle color change
+            input.addEventListener('change', () => {
+              const newColor = input.value;
+              textInput.value = newColor;
+              preview.style.background = newColor;
+              
+              // Remove the input after color selection
+              if (picker.contains(input)) {
+                picker.removeChild(input);
+              }
+            });
+            
+            // Handle escape key
+            const handleKeyDown = (e) => {
+              if (e.key === 'Escape') {
+                if (picker.contains(input)) {
+                  picker.removeChild(input);
+                }
+                document.removeEventListener('keydown', handleKeyDown);
+              }
+            };
+            document.addEventListener('keydown', handleKeyDown);
+            
+            // Handle clicks outside the picker
+            const handleClickOutside = (e) => {
+              if (!picker.contains(e.target)) {
+                if (picker.contains(input)) {
+                  picker.removeChild(input);
+                }
+                document.removeEventListener('click', handleClickOutside);
+              }
+            };
+            
+            // Add click outside handler after a delay
+            setTimeout(() => {
+              document.addEventListener('click', handleClickOutside);
+            }, 100);
+          }
+        }
+      });
+    });
+    
+    // Setup text input changes
+    const colorTexts = this._root.querySelectorAll('.color-text');
+    colorTexts.forEach(textInput => {
+      textInput.addEventListener('input', () => {
+        const value = textInput.value;
+        if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+          const picker = textInput.closest('.color-picker-inline');
+          if (picker) {
+            const preview = picker.querySelector('.color-preview');
+            if (preview) {
+              preview.style.background = value;
+            }
+          }
+        }
+      });
+    });
+    
+    // Setup save buttons
+    const saveButtons = this._root.querySelectorAll('.save-color-btn');
+    saveButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const themeKey = button.dataset.theme;
+        const picker = button.closest('.color-picker-inline');
+        if (picker) {
+          const textInput = picker.querySelector('.color-text');
+          if (textInput) {
+            let newValue;
+            const inputValue = textInput.value;
+            
+            // Handle special cases for auto-supported fields
+            if ((themeKey === 'status_icon' || themeKey === 'progress_ring' || 
+                 themeKey === 'status_bg' || themeKey === 'telemetry_icon' || 
+                 themeKey === 'telemetry_text') && inputValue === 'auto') {
+              newValue = 'auto';
+            } else if (/^#[0-9A-Fa-f]{6}$/.test(inputValue)) {
+              newValue = hexToRgba(inputValue, 0.9);
+            } else {
+              // Keep existing value if input is invalid
+              newValue = this._cfg.theme[themeKey];
+            }
+            
+            
+            this._cfg.theme = { ...this._cfg.theme, [themeKey]: newValue };
+            
+            // Save to storage
+            const cardId = generateCardId(this._cfg);
+            saveThemeToStorage(cardId, this._cfg.theme);
+            
+            this._updateThemeControls();
+            
+            // Hide the color picker first
+            picker.classList.remove('active');
+            
+            // Dispatch config change after a small delay to prevent tab switching
+            setTimeout(() => {
+              this._dispatchConfigChange();
+            }, 100);
+          }
+        }
+      });
+    });
+  }
+  
+  
+  
+  _updateThemeControls() {
+    // Update all preview elements with new colors
+    const clickableElements = this._root.querySelectorAll('.clickable-element');
+    clickableElements.forEach(element => {
+      const themeKey = element.dataset.theme;
+      const preview = element.querySelector('.element-preview');
+      const currentValue = this._cfg.theme[themeKey] || '';
+      
+      if (themeKey === 'status_icon' || themeKey === 'progress_ring') {
+        preview.style.background = currentValue === 'auto' ? 'var(--primary-color)' : currentValue;
+      } else {
+        preview.style.background = currentValue;
+      }
+      
+      if (['pause_icon', 'resume_icon', 'stop_icon', 'light_icon_on', 'light_icon_off'].includes(themeKey)) {
+        preview.style.color = currentValue;
+      }
+    });
+    
+    // Update color picker previews and text inputs
+    const colorPickers = this._root.querySelectorAll('.color-picker-inline');
+    colorPickers.forEach(picker => {
+      const themeKey = picker.id.replace('color-picker-', '');
+      const themeValue = this._cfg.theme[themeKey];
+      const preview = picker.querySelector('.color-preview');
+      const textInput = picker.querySelector('.color-text');
+      
+      if (preview && textInput) {
+        if (themeKey === 'status_icon' || themeKey === 'progress_ring' || 
+            themeKey === 'status_bg' || themeKey === 'telemetry_icon' || 
+            themeKey === 'telemetry_text') {
+          if (themeValue === 'auto') {
+            // Show appropriate theme color for auto values
+            if (themeKey === 'status_bg') {
+              preview.style.background = 'var(--card-background-color)';
+            } else if (themeKey === 'telemetry_icon') {
+              preview.style.background = 'var(--secondary-text-color)';
+            } else if (themeKey === 'telemetry_text') {
+              preview.style.background = 'var(--primary-text-color)';
+            } else {
+              preview.style.background = '#000000';
+            }
+            textInput.value = 'auto';
+          } else {
+            preview.style.background = rgbaToHex(themeValue);
+            textInput.value = rgbaToHex(themeValue);
+          }
+        } else {
+          preview.style.background = rgbaToHex(themeValue);
+          textInput.value = rgbaToHex(themeValue);
+        }
+      }
+    });
+  }
+  
+  _dispatchConfigChange() {
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      // Preserve current tab state
+      const activeTab = this._root.querySelector('.tab.active');
+      const activeTabId = activeTab ? activeTab.dataset.tab : 'entities';
+      
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._cfg } }));
+      
+      // Restore tab state after a brief delay
+      setTimeout(() => {
+        this._restoreTabState(activeTabId);
+      }, 50);
+    }, 120);
+  }
+  
+  _restoreTabState(activeTabId) {
+    // Switch to the preserved tab
+    const tabs = this._root.querySelectorAll('.tab');
+    const tabContents = this._root.querySelectorAll('.tab-content');
+    
+    tabs.forEach(tab => {
+      tab.classList.remove('active');
+      if (tab.dataset.tab === activeTabId) {
+        tab.classList.add('active');
+      }
+    });
+    
+    tabContents.forEach(content => {
+      content.classList.remove('active');
+      if (content.id === `${activeTabId}-tab`) {
+        content.classList.add('active');
+      }
+    });
   }
 }
 customElements.define(EDITOR_TAG, KPrinterCardEditor);

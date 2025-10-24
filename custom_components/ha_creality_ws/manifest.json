@@ -9,7 +9,11 @@
   "issue_tracker": "https://github.com/3dg1luk43/ha_creality_ws/issues",
   "loggers": ["custom_components.ha_creality_ws"],
   "requirements": [
-    "websockets>=10.4"
+    "websockets>=10.4",
+    "aiortc>=1.6.0",
+    "av>=10.0.0",
+    "numpy>=1.21.0",
+    "Pillow>=8.0.0"
   ],
   "version": "0.5.4",
   "zeroconf": [

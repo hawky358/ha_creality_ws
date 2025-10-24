@@ -21,13 +21,22 @@ def _register_static_path(hass: HomeAssistant, url_path: str, path: str) -> None
         # HA 2024.7+ supports async_register_static_paths/StaticPathConfig; prefer that
         from homeassistant.components.http import StaticPathConfig
 
-        # Use async API when available
+        # Use async API when available. Run inside a guarded async task so any
+        # exceptions (duplicate routes, etc.) are handled and don't generate
+        # un-retrieved task exceptions which show as noisy errors in the log.
         if hasattr(hass.http, "async_register_static_paths"):
-            hass.async_create_task(
-                hass.http.async_register_static_paths(
-                    [StaticPathConfig(url_path, path, True)]
-                )
-            )
+            async def _safe_register():
+                try:
+                    await hass.http.async_register_static_paths(
+                        [StaticPathConfig(url_path, path, True)]
+                    )
+                except Exception as exc:
+                    # Duplicate route registrations raise RuntimeError in aiohttp
+                    # when the same method/path is already present. Handle it
+                    # gracefully and log at debug level.
+                    _LOGGER.debug("Failed to async register static path %s -> %s: %s", url_path, path, exc)
+
+            hass.async_create_task(_safe_register())
             return
     except Exception:
         # Fall through to sync API below

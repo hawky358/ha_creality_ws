@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Any, Callable
 from .utils import parse_position as _parse_position, safe_float as _safe_float
 
@@ -11,6 +12,8 @@ from .entity import KEntity
 from datetime import timedelta
 from homeassistant.helpers.event import async_track_time_interval  # type: ignore[import]
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 
@@ -198,7 +201,10 @@ class KSimpleFieldSensor(KEntity, SensorEntity):
         self._get_attrs: Callable[[dict[str, Any]], dict[str, Any]] = spec.get("attrs") or (lambda d: {})
 
     def _zero_value(self):
-        # Return 0 for numeric-ish fields; None for string/non-numeric fields
+        # Return 0 for numeric fields; None for string/non-numeric fields
+        # Layer sensors should return 0 when printer is off
+        if self._field in ("TotalLayer", "layer"):
+            return 0
         # The "system" sensor is textual; everything else in SPECS is numeric.
         if self._attr_native_unit_of_measurement is None and self._field not in ("__pos_x__", "__pos_y__", "__pos_z__", "__progress__"):
             # likely a text field ("system")
@@ -390,7 +396,7 @@ class CurrentObjectSensor(KEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         if self._should_zero():
-            return None
+            return "N/A"
         d = self.coordinator.data or {}
         v = d.get("current_object") or d.get("currentObject")
         return str(v) if v is not None else None
@@ -466,7 +472,27 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(PrintStatusSensor(coord))
 
     # Simple field sensors from SPECS
-    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp"))
+    # Model detection logic
+    model = (coord.data or {}).get("model") or ""
+    model_l = str(model).lower()
+    
+    is_k1_family = "k1" in model_l
+    is_k1_se = is_k1_family and "se" in model_l
+    is_k1_max = is_k1_family and "max" in model_l
+    is_k2_family = "k2" in model_l
+    is_k2_base = is_k2_family and not ("pro" in model_l or "plus" in model_l)
+    is_k2_pro = is_k2_family and "pro" in model_l
+    is_k2_plus = is_k2_family and "plus" in model_l
+    is_ender_v3_family = "ender" in model_l and "v3" in model_l
+    is_creality_hi = "hi" in model_l
+    
+    # Models with box temperature sensor: K1 family (except SE), K1 Max, K2 family, Creality Hi
+    has_box_sensor = (is_k1_family and not is_k1_se) or is_k1_max or is_k2_family or is_creality_hi
+    
+    # Debug logging for model detection
+    _LOGGER.debug(f"Model detection - Model: '{model}', has_box_sensor: {has_box_sensor}")
+    
+    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp")) and has_box_sensor
     added_box_sensor = False
     for spec in SPECS:
         if spec.get("uid") == "box_temperature":
@@ -490,7 +516,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Delayed capability refresh for Box Temperature sensor: some firmwares
     # surface boxTemp/maxBoxTemp only after boot. Add the sensor when it appears.
-    if not added_box_sensor:
+    if not added_box_sensor and has_box_sensor:
         def _capability_check(_now) -> None:
             nonlocal added_box_sensor
             if added_box_sensor:
