@@ -1,5 +1,3 @@
-## !!! There's currently a bug that removes resources from /hacsfiles/ in some cases. Please backup first if you want to proceed with installation !!!
-
 # Creality WebSocket Integration for Home Assistant
 
 This custom [Home Assistant](https://www.home-assistant.io/) integration provides **native, low-latency WebSocket control and telemetry** for Creality K-series and compatible 3D printers. It exposes live state, sensors, controls, and a camera stream. A **standalone Lovelace card** (no external card dependencies) is included.
@@ -42,12 +40,8 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 
 The integration automatically installs the following Python packages:
 - `websockets>=10.4` - For WebSocket communication with printers
-- `aiortc>=1.6.0` - For WebRTC support (K2 family cameras)
-- `av>=10.0.0` - Video processing (required by aiortc)
-- `numpy>=1.21.0` - Numerical operations (required by aiortc)
-- `Pillow>=8.0.0` - Image processing (required by aiortc)
 
-**Note:** If you see errors about missing WebRTC dependencies, restart Home Assistant to trigger the automatic installation.
+**work-in-progress** For K2 family cameras, the integration will use the go2rtc add-on (built into Home Assistant) for WebRTC-to-MJPEG conversion. No additional Python dependencies are required.
 
 ---
 
@@ -76,7 +70,7 @@ If auto-detection doesn't choose your preferred stream, you can force it under t
   - `mjpeg` - Force direct MJPEG stream (K1 family style)
   - `webrtc` - Force WebRTC-to-MJPEG conversion (K2 family style)
 
-**Note:** When forcing `webrtc` mode, the integration will use WebRTC-to-MJPEG conversion, which requires the WebRTC dependencies (`aiortc`, `av`, etc.) to be installed.
+**Note:** When forcing `webrtc` mode, the integration will use WebRTC-to-MJPEG conversion via the go2rtc add-on (built into Home Assistant).
 
 ---
 
@@ -265,20 +259,20 @@ The theme data is stored per card instance, so each card can have its own unique
   Set the **Power Switch** in the integration's Configure dialog.
 * **Resource missing in storage mode**
   Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
-* **WebRTC dependencies not available**
-  If you see errors about missing `aiortc`, `av`, or other WebRTC dependencies:
-  1. Restart Home Assistant to trigger automatic dependency installation
-  2. Check the Home Assistant logs for dependency installation progress
-  3. Ensure your Home Assistant installation has internet access for package downloads
+* **WebRTC camera not working**
+  If K2 family cameras show fallback images instead of live video:
+  1. Ensure go2rtc add-on is installed and running in Home Assistant
+  2. Check that the printer's WebRTC signaling endpoint is accessible
+  3. Verify the printer supports WebRTC (K2 family only)
 * **K2 camera shows no image**
   - Check that the printer's WebRTC endpoint is accessible
   - Verify the printer model is correctly detected (check logs for "detected K2 family printer")
-  - Ensure WebRTC dependencies are installed (see above)
+  - Ensure go2rtc add-on is running in Home Assistant
 * **Manual camera mode not working**
   - Check logs for "user forced [mode] mode" messages
   - Verify the camera mode is set correctly in the integration's Configure dialog
   - Restart Home Assistant after changing camera mode settings
-  - For `webrtc` mode: ensure WebRTC dependencies are installed
+  - For `webrtc` mode: ensure go2rtc add-on is running
 
 ---
 
@@ -298,7 +292,7 @@ The theme data is stored per card instance, so each card can have its own unique
   - Provides a standard MJPEG camera entity to Home Assistant
   - Works with all standard Home Assistant camera cards
 
-- **Dependencies**: WebRTC functionality requires `aiortc`, `av`, `numpy`, and `Pillow` packages, which are automatically installed by Home Assistant when the integration is loaded.
+- **Dependencies**: WebRTC functionality uses the go2rtc add-on (built into Home Assistant) for stream conversion. Only `websockets` Python package is required.
 
 ---
 
