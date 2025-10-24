@@ -1,3 +1,5 @@
+## !!! There's currently a bug that removes resources from /hacsfiles/ in some cases. Please backup first if you want to proceed with installation !!!
+
 # Creality WebSocket Integration for Home Assistant
 
 This custom [Home Assistant](https://www.home-assistant.io/) integration provides **native, low-latency WebSocket control and telemetry** for Creality K-series and compatible 3D printers. It exposes live state, sensors, controls, and a camera stream. A **standalone Lovelace card** (no external card dependencies) is included.
