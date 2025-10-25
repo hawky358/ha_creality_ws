@@ -18,7 +18,6 @@ from .const import (
     CAM_MODE_AUTO,
     CAM_MODE_MJPEG,
     CAM_MODE_WEBRTC,
-    CONF_AUTO_PROXY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,9 +108,5 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Optional(
-                CONF_AUTO_PROXY,
-                default=self._entry.options.get(CONF_AUTO_PROXY, False),
-            ): selector.BooleanSelector(),
         })
         return self.async_show_form(step_id="init", data_schema=schema)

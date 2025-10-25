@@ -5,7 +5,6 @@ CONF_NAME = "name"
 CONF_DISCOVERY_SCAN_CIDR = "scan_cidr"
 CONF_POWER_SWITCH = "power_switch"
 CONF_CAMERA_MODE = "camera_mode"
-CONF_AUTO_PROXY = "auto_proxy_webrtc"
 
 DEFAULT_NAME = "Creality Printer (WS)"
 
