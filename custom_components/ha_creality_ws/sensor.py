@@ -12,6 +12,7 @@ from .entity import KEntity
 from datetime import timedelta
 from homeassistant.helpers.event import async_track_time_interval  # type: ignore[import]
 from .const import DOMAIN
+from .utils import ModelDetection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -473,26 +474,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Simple field sensors from SPECS
     # Model detection logic
-    model = (coord.data or {}).get("model") or ""
-    model_l = str(model).lower()
-    
-    is_k1_family = "k1" in model_l
-    is_k1_se = is_k1_family and "se" in model_l
-    is_k1_max = is_k1_family and "max" in model_l
-    is_k2_family = "k2" in model_l
-    is_k2_base = is_k2_family and not ("pro" in model_l or "plus" in model_l)
-    is_k2_pro = is_k2_family and "pro" in model_l
-    is_k2_plus = is_k2_family and "plus" in model_l
-    is_ender_v3_family = "ender" in model_l and "v3" in model_l
-    is_creality_hi = "hi" in model_l
-    
-    # Models with box temperature sensor: K1 family (except SE), K1 Max, K2 family, Creality Hi
-    has_box_sensor = (is_k1_family and not is_k1_se) or is_k1_max or is_k2_family or is_creality_hi
+    printermodel = ModelDetection(coord.data)
     
     # Debug logging for model detection
-    _LOGGER.debug(f"Model detection - Model: '{model}', has_box_sensor: {has_box_sensor}")
+    # _LOGGER.debug(f"Model detection - Model: '{model}', has_box_sensor: {has_box_sensor}")
     
-    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp")) and has_box_sensor
+    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp")) and printermodel.has_box_sensor
     added_box_sensor = False
     for spec in SPECS:
         if spec.get("uid") == "box_temperature":
@@ -516,7 +503,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Delayed capability refresh for Box Temperature sensor: some firmwares
     # surface boxTemp/maxBoxTemp only after boot. Add the sensor when it appears.
-    if not added_box_sensor and has_box_sensor:
+    if not added_box_sensor and printermodel.has_box_sensor:
         def _capability_check(_now) -> None:
             nonlocal added_box_sensor
             if added_box_sensor:

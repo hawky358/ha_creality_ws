@@ -17,6 +17,7 @@ import voluptuous as vol #type: ignore[import]
 from .const import DOMAIN, STALE_AFTER_SECS, CONF_POWER_SWITCH
 from .coordinator import KCoordinator
 from .frontend import CrealityCardRegistration  # <-- NEW IMPORT
+from .utils import ModelDetection
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[str] = ["sensor", "switch", "camera", "button", "number"]
@@ -122,38 +123,30 @@ async def _register_diagnostic_service(hass: HomeAssistant) -> None:
                 }
                 
                 # Add model detection info
+                printermodel = ModelDetection(coord.data)
                 model = (coord.data or {}).get("model") or ""
                 model_l = str(model).lower()
                 printer_data["model_detection"] = {
                     "raw_model": model,
                     "model_lower": model_l,
-                    "is_k1_family": "k1" in model_l,
-                    "is_k1_se": "k1" in model_l and "se" in model_l,
-                    "is_k1_max": "k1" in model_l and "max" in model_l,
-                    "is_k2_family": "k2" in model_l,
-                    "is_k2_base": "k2" in model_l and not ("pro" in model_l or "plus" in model_l),
-                    "is_k2_pro": "k2" in model_l and "pro" in model_l,
-                    "is_k2_plus": "k2" in model_l and "plus" in model_l,
-                    "is_ender_v3_family": "ender" in model_l and "v3" in model_l,
-                    "is_creality_hi": "hi" in model_l
+                    "is_k1_family": printermodel.is_k1_family,
+                    "is_k1_se": printermodel.is_k1_se,
+                    "is_k1_max": printermodel.is_k1_max,
+                    "is_k2_family": printermodel.is_k2_family,
+                    "is_k2_base": printermodel.is_k2_base,
+                    "is_k2_pro": printermodel.is_k2_pro,
+                    "is_k2_plus": printermodel.is_k2_plus,
+                    "is_ender_v3_family": printermodel.is_ender_v3_family,
+                    "is_creality_hi": printermodel.is_creality_hi
                 }
                 
                 # Add feature detection (matching sensor.py logic)
-                is_k1_family = "k1" in model_l
-                is_k1_se = is_k1_family and "se" in model_l
-                is_k1_max = is_k1_family and "max" in model_l
-                is_k2_family = "k2" in model_l
-                is_k2_pro = is_k2_family and "pro" in model_l
-                is_k2_plus = is_k2_family and "plus" in model_l
-                is_ender_v3_family = "ender" in model_l and "v3" in model_l
-                is_creality_hi = "hi" in model_l
-                
                 printer_data["feature_detection"] = {
-                    "has_light": not (is_k1_se or is_ender_v3_family),
-                    "has_box_sensor": (is_k1_family and not is_k1_se) or is_k1_max or is_k2_family or is_creality_hi,
-                    "has_box_control": is_k2_pro or is_k2_plus,
-                    "camera_type": "webrtc" if is_k2_family else 
-                                  "mjpeg_optional" if (is_k1_se or is_ender_v3_family) else 
+                    "has_light": printermodel.has_light,
+                    "has_box_sensor": printermodel.has_box_sensor,
+                    "has_box_control": printermodel.has_box_control,
+                    "camera_type": "webrtc" if printermodel.is_k2_family else 
+                                  "mjpeg_optional" if (printermodel.is_k1_se or printermodel.is_ender_v3_family) else 
                                   "mjpeg"
                 }
                 

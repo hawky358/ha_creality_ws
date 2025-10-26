@@ -15,7 +15,7 @@ except Exception:  # older cores
 
 from .const import DOMAIN
 from .entity import KEntity
-
+from .utils import ModelDetection
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
@@ -29,24 +29,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(BedTargetNumber(coord, bed_index=0))
     
     # Model detection logic
-    model = (coord.data or {}).get("model") or ""
-    model_l = str(model).lower()
-    
-    is_k1_family = "k1" in model_l
-    is_k1_se = is_k1_family and "se" in model_l
-    is_k1_max = is_k1_family and "max" in model_l
-    is_k2_family = "k2" in model_l
-    is_k2_base = is_k2_family and not ("pro" in model_l or "plus" in model_l)
-    is_k2_pro = is_k2_family and "pro" in model_l
-    is_k2_plus = is_k2_family and "plus" in model_l
-    is_ender_v3_family = "ender" in model_l and "v3" in model_l
-    is_creality_hi = "hi" in model_l
-    
-    # Models with box temperature control: Only K2 Pro and K2 Plus
-    has_box_control = is_k2_pro or is_k2_plus
-    
+    printermodel = ModelDetection(coord.data) 
     added_box = False
-    if coord.data.get("maxBoxTemp") and has_box_control:
+    if coord.data.get("maxBoxTemp") and printermodel.has_box_control:
         ents.append(BoxTargetNumber(coord))
         added_box = True
     # ---- Fan percentages via M106 Pn Sxxx (no switches) ----
@@ -58,7 +43,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Delayed capability refresh: some firmwares expose maxBoxTemp later in boot.
     # Poll briefly and add BoxTargetNumber once capability appears.
-    if not added_box and has_box_control:
+    if not added_box and printermodel.has_box_control:
         def _capability_check(_now) -> None:
             nonlocal added_box
             if added_box:
