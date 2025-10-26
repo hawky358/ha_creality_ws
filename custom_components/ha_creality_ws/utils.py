@@ -113,11 +113,11 @@ class ModelDetection():
         self.is_k1_family = "k1" in self.model_l
         self.is_k1_se = self.is_k1_family and "se" in self.model_l
         self.is_k1_max = self.is_k1_family and "max" in self.model_l
-        self.is_k2_family = "k2" in self.model_l or "f008" in self.model_l
-        self.is_k2_base = self.is_k2_family and not ("pro" in self.model_l or "plus" in self.model_l)
-        self.is_k2_pro = self.is_k2_family and "pro" in self.model_l
-        self.is_k2_plus = (self.is_k2_family and "plus" in self.model_l) or "f008" in self.model_l
-        self.is_ender_v3_family = "ender" in self.model_l and "v3" in self.model_l
+        self.is_k2_family = "k2" in self.model_l or "f008" in self.model_l or "f012" in self.model_l
+        self.is_k2_pro = "pro" in self.model_l or "f012" in self.model_l
+        self.is_k2_plus = ("plus" in self.model_l and self.is_k2_family) or "f008" in self.model_l
+        self.is_k2_base = self.is_k2_family and not (self.is_k2_pro or self.is_k2_plus)
+        self.is_ender_v3_family = ("ender" in self.model_l and "v3" in self.model_l) or "f005" in self.model_l
         self.is_creality_hi = "hi" in self.model_l
     # Models with box temperature control: Only K2 Pro and K2 Plus
         self.has_box_control = self.is_k2_pro or self.is_k2_plus
