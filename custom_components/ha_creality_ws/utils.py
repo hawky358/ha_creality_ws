@@ -102,3 +102,24 @@ def extract_host_from_zeroconf(info: Any) -> Optional[str]:
     except Exception:
         pass
     return None
+
+class ModelDetection():
+    def __init__(self, coord_data):
+        
+        self.model = (coord_data or {}).get("model") or ""
+        self.model_l = str(self.model).lower()
+        self.modelversion = (coord_data or {}).get("'modelVersion': ") or "" #can do something here with checking against a list of known model/mainboard versions. This may be more reliable that checking model name, but I don't have info on other boards.
+        
+        self.is_k1_family = "k1" in self.model_l
+        self.is_k1_se = self.is_k1_family and "se" in self.model_l
+        self.is_k1_max = self.is_k1_family and "max" in self.model_l
+        self.is_k2_family = "k2" in self.model_l or "f008" in self.model_l
+        self.is_k2_base = self.is_k2_family and not ("pro" in self.model_l or "plus" in self.model_l)
+        self.is_k2_pro = self.is_k2_family and "pro" in self.model_l
+        self.is_k2_plus = (self.is_k2_family and "plus" in self.model_l) or "f008" in self.model_l
+        self.is_ender_v3_family = "ender" in self.model_l and "v3" in self.model_l
+        self.is_creality_hi = "hi" in self.model_l
+    # Models with box temperature control: Only K2 Pro and K2 Plus
+        self.has_box_control = self.is_k2_pro or self.is_k2_plus
+        self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family or self.is_creality_hi
+        self.has_light = not (self.is_k1_se or self.is_ender_v3_family)

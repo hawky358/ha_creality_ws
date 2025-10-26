@@ -36,6 +36,7 @@ except Exception:  # compatibility with older cores
 
 from .const import DOMAIN, MJPEG_URL_TEMPLATE, WEBRTC_URL_TEMPLATE
 from .entity import KEntity
+from .utils import ModelDetection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -900,25 +901,11 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             _LOGGER.debug("ha_creality_ws: timeout waiting for first connection to %s", host)
             pass
 
-    model = (coord.data or {}).get("model") or ""
-    model_l = str(model).lower()
-
-    _LOGGER.debug("ha_creality_ws: detected printer model: %s", model)
-
-    # Model detection logic
-    is_k1_family = "k1" in model_l
-    is_k1_se = is_k1_family and "se" in model_l
-    is_k1_max = is_k1_family and "max" in model_l
-    is_k2_family = "k2" in model_l
-    is_k2_base = is_k2_family and not ("pro" in model_l or "plus" in model_l)
-    is_k2_pro = is_k2_family and "pro" in model_l
-    is_k2_plus = is_k2_family and "plus" in model_l
-    is_ender_v3_family = "ender" in model_l and "v3" in model_l
-    is_creality_hi = "hi" in model_l
+    printermodel = ModelDetection(coord.data)
 
     # WebRTC cameras (K2 family - always present)
     webrtc_url = WEBRTC_URL_TEMPLATE.format(host=host)
-    if is_k2_family:
+    if printermodel.is_k2_family:
         _LOGGER.info("ha_creality_ws: detected K2 family printer, using WebRTC camera")
         async_add_entities([CrealityWebRTCCamera(coord, webrtc_url, use_proxy=use_proxy)])
         return
@@ -927,7 +914,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     mjpeg_url = MJPEG_URL_TEMPLATE.format(host=host)
     
     # Models with optional cameras (K1 SE, Ender 3 V3 family)
-    if is_k1_se or is_ender_v3_family:
+    if printermodel.is_k1_se or printermodel.is_ender_v3_family:
         _LOGGER.info("ha_creality_ws: detected optional camera model, attempting MJPEG")
         try:
             async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
@@ -938,7 +925,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         return
 
     # Models with default MJPEG cameras (K1 family except SE, K1 Max, Creality Hi)
-    if is_k1_family or is_k1_max or is_creality_hi:
+    if printermodel.is_k1_family or printermodel.is_k1_max or printermodel.is_creality_hi:
         _LOGGER.info("ha_creality_ws: detected MJPEG camera model")
         async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
         return
