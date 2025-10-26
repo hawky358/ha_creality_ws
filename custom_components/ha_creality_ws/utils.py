@@ -110,15 +110,105 @@ class ModelDetection():
         self.model_l = str(self.model).lower()
         self.modelversion = (coord_data or {}).get("'modelVersion': ") or "" #can do something here with checking against a list of known model/mainboard versions. This may be more reliable that checking model name, but I don't have info on other boards.
         
-        self.is_k1_family = "k1" in self.model_l
-        self.is_k1_se = self.is_k1_family and "se" in self.model_l
-        self.is_k1_max = self.is_k1_family and "max" in self.model_l
-        self.is_k2_family = "k2" in self.model_l or "f008" in self.model_l or "f012" in self.model_l
-        self.is_k2_pro = "pro" in self.model_l or "f012" in self.model_l
-        self.is_k2_plus = ("plus" in self.model_l and self.is_k2_family) or "f008" in self.model_l
-        self.is_k2_base = self.is_k2_family and not (self.is_k2_pro or self.is_k2_plus)
-        self.is_ender_v3_family = ("ender" in self.model_l and "v3" in self.model_l) or "f005" in self.model_l
-        self.is_creality_hi = "hi" in self.model_l
+        # Individual printer model detection
+        # K1 Base - "CR-K1"
+        self.is_k1_base = (
+            "cr-k1" in self.model_l or
+            self.model == "CR-K1"
+        )
+        
+        # K1 SE - "K1 SE"
+        self.is_k1_se = (
+            "k1 se" in self.model_l or
+            self.model == "K1 SE"
+        )
+        
+        # K1 Max - "CR-K1 Max"
+        self.is_k1_max = (
+            "cr-k1 max" in self.model_l or
+            self.model == "CR-K1 Max"
+        )
+        
+        # K2 Base - "F021"
+        self.is_k2_base = (
+            "F021" in self.model or
+            self.model == "F021"
+        )
+        
+        # K2 Pro - "F012"
+        self.is_k2_pro = (
+            "F012" in self.model or
+            self.model == "F012"
+        )
+        
+        # K2 Plus - "F008"
+        self.is_k2_plus = (
+            "F008" in self.model or
+            self.model == "F008"
+        )
+        
+        # Ender-3 V3 KE - "F005"
+        self.is_ender_v3_ke = (
+            "F005" in self.model or
+            self.model == "F005" or
+            "ender-3 v3 ke" in self.model_l or
+            self.model == "Ender-3 V3 KE"
+        )
+        
+        # Ender-3 V3 Plus - "F002"
+        self.is_ender_v3_plus = (
+            "F002" in self.model or
+            self.model == "F002" or
+            "ender-3 v3 plus" in self.model_l or
+            self.model == "Ender-3 V3 Plus"
+        )
+        
+        # Ender-3 V3 - "F001"
+        self.is_ender_v3 = (
+            "F001" in self.model or
+            self.model == "F001" or
+            "ender-3 v3" in self.model_l or
+            self.model == "Ender-3 V3"
+        )
+        
+        # Ender-3 V3 SE - "Ender-3 V3 SE"
+        self.is_ender_v3_se = (
+            "ender-3 v3 se" in self.model_l or
+            self.model == "Ender-3 V3 SE"
+        )
+        
+        # Creality Hi - "F018"
+        self.is_creality_hi = (
+            "F018" in self.model or
+            self.model == "F018" or
+            "hi" in self.model_l
+        )
+        
+        # Family groupings
+        # K1 Family
+        self.is_k1_family = (
+            self.is_k1_base or
+            self.is_k1_se or
+            self.is_k1_max or
+            "k1" in self.model_l
+        )
+        
+        # K2 Family
+        self.is_k2_family = (
+            self.is_k2_base or
+            self.is_k2_pro or
+            self.is_k2_plus or
+            "k2" in self.model_l
+        )
+        
+        # Ender-3 V3 Family
+        self.is_ender_v3_family = (
+            self.is_ender_v3_ke or
+            self.is_ender_v3_plus or
+            self.is_ender_v3 or
+            self.is_ender_v3_se or
+            ("ender" in self.model_l and "v3" in self.model_l)
+        )
     # Models with box temperature control: Only K2 Pro and K2 Plus
         self.has_box_control = self.is_k2_pro or self.is_k2_plus
         self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family or self.is_creality_hi
