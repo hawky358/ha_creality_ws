@@ -114,24 +114,12 @@ class ModelDetection():
         self.is_k1_se = self.is_k1_family and "se" in self.model_l
         self.is_k1_max = self.is_k1_family and "max" in self.model_l
         self.is_k2_family = "k2" in self.model_l or "f008" in self.model_l or "f012" in self.model_l
-
-        # k1c is f005, but is NOT Ender V3 family
-        self.is_k1c = "f005" in self.model_l
         self.is_k2_pro = "pro" in self.model_l or "f012" in self.model_l
         self.is_k2_plus = ("plus" in self.model_l and self.is_k2_family) or "f008" in self.model_l
         self.is_k2_base = self.is_k2_family and not (self.is_k2_pro or self.is_k2_plus)
-        self.is_ender_v3_family = (
-            ("ender" in self.model_l and "v3" in self.model_l)
-            and "f005" not in self.model_l
-        )
+        self.is_ender_v3_family = ("ender" in self.model_l and "v3" in self.model_l) or "f005" in self.model_l
         self.is_creality_hi = "hi" in self.model_l
-        # Models with box temperature control: Only K2 Pro and K2 Plus
+    # Models with box temperature control: Only K2 Pro and K2 Plus
         self.has_box_control = self.is_k2_pro or self.is_k2_plus
-        self.has_box_sensor = (
-            (self.is_k1_family and not self.is_k1_se)
-            or self.is_k1_max
-            or self.is_k2_family
-            or self.is_creality_hi
-            or self.is_k1c
-        )
+        self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family or self.is_creality_hi
         self.has_light = not (self.is_k1_se or self.is_ender_v3_family)
