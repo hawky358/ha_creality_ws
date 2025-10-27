@@ -13,7 +13,15 @@ from homeassistant.helpers.event import ( #type: ignore[import]
 )
 import voluptuous as vol #type: ignore[import]
 
-from .const import DOMAIN, STALE_AFTER_SECS, CONF_POWER_SWITCH
+from .const import (
+    DOMAIN, 
+    STALE_AFTER_SECS, 
+    CONF_POWER_SWITCH,
+    CONF_GO2RTC_URL,
+    CONF_GO2RTC_PORT,
+    DEFAULT_GO2RTC_URL,
+    DEFAULT_GO2RTC_PORT,
+)
 from .coordinator import KCoordinator
 from .frontend import CrealityCardRegistration
 from .utils import ModelDetection
@@ -21,6 +29,56 @@ from .utils import ModelDetection
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[str] = ["sensor", "switch", "camera", "button", "number"]
 
+# Import integration version from manifest
+import json
+import os
+
+def _get_integration_version() -> str:
+    """Get current integration version from manifest.json"""
+    try:
+        manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+        with open(manifest_path, "r") as f:
+            manifest = json.load(f)
+            return manifest.get("version", "0.0.0")
+    except Exception:
+        return "0.0.0"
+
+def _migrate_go2rtc_settings(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Migrate go2rtc settings to entry options if not already set."""
+    current_options = dict(entry.options)
+    needs_update = False
+    
+    # Migrate go2rtc_url if missing or in data
+    if not current_options.get(CONF_GO2RTC_URL):
+        # Check if it was stored in entry.data (old location)
+        old_url = entry.data.get(CONF_GO2RTC_URL)
+        if old_url:
+            current_options[CONF_GO2RTC_URL] = old_url
+            needs_update = True
+            _LOGGER.info("Migrated go2rtc_url from entry.data to options")
+        else:
+            # Set default if missing
+            current_options[CONF_GO2RTC_URL] = DEFAULT_GO2RTC_URL
+            needs_update = True
+            _LOGGER.debug("Setting default go2rtc_url: %s", DEFAULT_GO2RTC_URL)
+    
+    # Migrate go2rtc_port if missing or in data
+    if not current_options.get(CONF_GO2RTC_PORT):
+        # Check if it was stored in entry.data (old location)
+        old_port = entry.data.get(CONF_GO2RTC_PORT)
+        if old_port:
+            current_options[CONF_GO2RTC_PORT] = old_port
+            needs_update = True
+            _LOGGER.info("Migrated go2rtc_port from entry.data to options")
+        else:
+            # Set default if missing
+            current_options[CONF_GO2RTC_PORT] = DEFAULT_GO2RTC_PORT
+            needs_update = True
+            _LOGGER.debug("Setting default go2rtc_port: %s", DEFAULT_GO2RTC_PORT)
+    
+    if needs_update:
+        hass.config_entries.async_update_entry(entry, options=current_options)
+        _LOGGER.info("Migrated go2rtc settings to entry options")
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Creality integration from a config entry."""
@@ -39,10 +97,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coord.async_stop()
         raise ConfigEntryNotReady(str(exc)) from exc
 
-    # Detect and store device info during initial setup (only once)
+    # Get current integration version
+    current_version = _get_integration_version()
+    cached_version = entry.data.get("_cached_version", "0.0.0")
+    
+    # Detect and store device info during initial setup or on version upgrade
     # This is stored in entry.data which persists across restarts
-    if not entry.data.get("_device_info_cached"):
-        _LOGGER.info("Performing initial device detection for %s", host)
+    should_re_cache = (
+        not entry.data.get("_device_info_cached") or
+        cached_version != current_version
+    )
+    
+    if should_re_cache:
+        _LOGGER.info(
+            "Caching device info for %s (cached_version=%s, current_version=%s)",
+            host, cached_version, current_version
+        )
         # Wait a bit longer to ensure we get model info
         if not coord.power_is_off():
             ok = await coord.wait_first_connect(timeout=10.0)
@@ -55,28 +125,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 printermodel = ModelDetection(coord.data)
                 new_data = dict(entry.data)
                 new_data["_device_info_cached"] = True
+                new_data["_cached_version"] = current_version
                 new_data["_cached_model"] = model
                 new_data["_cached_hostname"] = hostname
                 new_data["_cached_model_version"] = model_version
                 new_data["_cached_has_light"] = printermodel.has_light
                 new_data["_cached_has_box_sensor"] = printermodel.has_box_sensor
                 new_data["_cached_has_box_control"] = printermodel.has_box_control
-                new_data["_cached_camera_type"] = "webrtc" if printermodel.is_k2_family else (
-                    "mjpeg_optional" if (printermodel.is_k1_se or printermodel.is_ender_v3_family) else "mjpeg"
-                )
+                
+                # Re-detect camera type if upgrading or missing
+                cached_camera_type = entry.data.get("_cached_camera_type")
+                if not cached_camera_type or cached_version != current_version:
+                    new_data["_cached_camera_type"] = "webrtc" if printermodel.is_k2_family else (
+                        "mjpeg_optional" if (printermodel.is_k1_se or printermodel.is_ender_v3_family) else "mjpeg"
+                    )
+                    _LOGGER.info("Camera type detected: %s", new_data["_cached_camera_type"])
+                else:
+                    # Keep existing camera type
+                    new_data["_cached_camera_type"] = cached_camera_type
+                
                 hass.config_entries.async_update_entry(entry, data=new_data)
-                _LOGGER.info("Device info cached: model=%s, camera=%s", model, new_data.get("_cached_camera_type"))
+                _LOGGER.info(
+                    "Device info cached: model=%s, camera=%s, version=%s",
+                    model, new_data.get("_cached_camera_type"), current_version
+                )
+                
+                # Migrate go2rtc settings if needed
+                _migrate_go2rtc_settings(hass, entry)
         else:
-            # Printer is off, cache defaults
-            _LOGGER.info("Printer is off during first setup, caching default device info")
+            # Printer is off - update version only, keep existing cached data if available
+            _LOGGER.info(
+                "Printer is off, updating version only (keeping existing cached data if available)"
+            )
             new_data = dict(entry.data)
             new_data["_device_info_cached"] = True
-            new_data["_cached_model"] = "K by Creality"
-            new_data["_cached_has_light"] = True
-            new_data["_cached_has_box_sensor"] = False
-            new_data["_cached_has_box_control"] = False
-            new_data["_cached_camera_type"] = "mjpeg"
+            new_data["_cached_version"] = current_version
+            
+            # Only set defaults if this is first-time setup (no cached model exists)
+            if not new_data.get("_cached_model"):
+                new_data["_cached_model"] = "K by Creality"
+                new_data["_cached_has_light"] = True
+                new_data["_cached_has_box_sensor"] = False
+                new_data["_cached_has_box_control"] = False
+                new_data["_cached_camera_type"] = "mjpeg"
+            
             hass.config_entries.async_update_entry(entry, data=new_data)
+            
+            # Migrate go2rtc settings even when printer is off
+            _migrate_go2rtc_settings(hass, entry)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
     
@@ -147,7 +243,7 @@ async def _register_diagnostic_service(hass: HomeAssistant) -> None:
             diagnostic_data = {
                 "timestamp": datetime.now().isoformat(),
                 "home_assistant_version": getattr(hass.config, 'version', 'unknown'),
-                "integration_version": "0.5.4",  # Update this when version changes
+                "integration_version": _get_integration_version(),
                 "printers": {}
             }
             
