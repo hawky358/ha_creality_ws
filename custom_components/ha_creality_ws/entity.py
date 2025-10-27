@@ -6,36 +6,6 @@ from .const import DOMAIN, MFR, MODEL
 from .utils import parse_model_version
 
 
-def _parse_model_version(s: str | None) -> tuple[str | None, str | None]:
-    """
-    Accept strings like:
-      "printer hw ver:;printer sw ver:;DWIN hw ver:CR4CU220812S11;DWIN sw ver:1.3.3.46;"
-    Extract the most meaningful HW/SW values and drop empties.
-    """
-    if not s or not isinstance(s, str):
-        return (None, None)
-
-    parts = {}
-    for seg in s.split(";"):
-        seg = seg.strip()
-        if not seg or ":" not in seg:
-            continue
-        k, v = seg.split(":", 1)
-        k = k.strip().lower()
-        v = v.strip() or None
-        parts[k] = v
-
-    # Preference order: printer* first, then DWIN*
-    hw = parts.get("printer hw ver") or parts.get("dwin hw ver")
-    sw = parts.get("printer sw ver") or parts.get("dwin sw ver")
-    # Prefix DWIN if that's what we ended up using
-    if hw and hw == parts.get("dwin hw ver"):
-        hw = f"DWIN {hw}"
-    if sw and sw == parts.get("dwin sw ver"):
-        sw = f"DWIN {sw}"
-    return (hw, sw)
-
-
 class KEntity(CoordinatorEntity):
     """Base entity for Creality K-series over WebSocket."""
 
@@ -60,9 +30,43 @@ class KEntity(CoordinatorEntity):
         coord = self.coordinator
         # Returns True if connection is lost OR if the power switch is off.
         return (not coord.available) or coord.power_is_off()
+    
+    def _get_cached_device_info(self) -> dict | None:
+        """
+        Get cached device info from config entry (model, hostname, modelVersion).
+        Returns None if not available.
+        """
+        try:
+            entry_id = getattr(self.coordinator, '_config_entry_id', None)
+            if entry_id:
+                entry_obj = self.coordinator.hass.config_entries.async_get_entry(entry_id)
+                if entry_obj and entry_obj.data.get("_device_info_cached"):
+                    return {
+                        "model": entry_obj.data.get("_cached_model"),
+                        "hostname": entry_obj.data.get("_cached_hostname"),
+                        "modelVersion": entry_obj.data.get("_cached_model_version"),
+                    }
+        except Exception:
+            pass
+        return None
 
     @property
     def device_info(self) -> DeviceInfo:
+        # First try to get cached device info from entry
+        cached_info = self._get_cached_device_info()
+        if cached_info and cached_info.get("model"):
+            hw_ver, sw_ver = parse_model_version(cached_info.get("modelVersion"))
+            return DeviceInfo(
+                identifiers={(DOMAIN, self._host)},
+                manufacturer=MFR,
+                model=cached_info.get("model"),
+                name=cached_info.get("hostname") or f"{cached_info.get('model')} (Creality)",
+                configuration_url=f"http://{self._host}/",
+                hw_version=hw_ver,
+                sw_version=sw_ver,
+            )
+        
+        # Fallback to current telemetry (for backwards compatibility)
         d = self.coordinator.data or {}
         model = d.get("model") or MODEL
         hostname = d.get("hostname")

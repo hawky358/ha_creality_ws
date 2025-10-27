@@ -202,40 +202,54 @@ class KSimpleFieldSensor(KEntity, SensorEntity):
         self._get_attrs: Callable[[dict[str, Any]], dict[str, Any]] = spec.get("attrs") or (lambda d: {})
 
     def _zero_value(self):
-        # Return 0 for numeric fields; None for string/non-numeric fields
-        # Layer sensors should return 0 when printer is off
+        """Return appropriate zero value for offline/off state."""
         if self._field in ("TotalLayer", "layer"):
             return 0
-        # The "system" sensor is textual; everything else in SPECS is numeric.
         if self._attr_native_unit_of_measurement is None and self._field not in ("__pos_x__", "__pos_y__", "__pos_z__", "__progress__"):
-            # likely a text field ("system")
             return None
         return 0
 
     @property
     def native_value(self):
+        # System entity (model) uses cached data from config entry, never live data
+        if self._field == "model":
+            cached_info = self._get_cached_device_info()
+            if cached_info and cached_info.get("model"):
+                return cached_info.get("model")
+            # Fallback to current data if no cached model
+            d = self.coordinator.data
+            return d.get(self._field) if d else None
+        
         d = self.coordinator.data
-
-        # Zero on off/unknown
-        if self._should_zero():
+        
+        # System entity should not be zeroed when printer is off - it shows cached info
+        if self._should_zero() and self._field != "model":
             return self._zero_value()
 
-        # computed fields
+        # Position parsing (computed from curPosition string)
         if self._field in ("__pos_x__", "__pos_y__", "__pos_z__"):
             x, y, z = _parse_position(d)
             return {"__pos_x__": x, "__pos_y__": y, "__pos_z__": z}[self._field]
 
+        # Print progress
         if self._field == "__progress__":
-            v = d.get("printProgress")
-            if v is None:
-                v = d.get("dProgress")
-            return v
+            return d.get("printProgress") or d.get("dProgress")
 
-        # direct
         return d.get(self._field)
 
     @property
     def extra_state_attributes(self):
+        # System entity (model) uses cached data from config entry, never live data
+        if self._field == "model":
+            cached_info = self._get_cached_device_info()
+            if cached_info:
+                d = {}
+                if cached_info.get("hostname"):
+                    d["hostname"] = cached_info.get("hostname")
+                if cached_info.get("modelVersion"):
+                    d["modelVersion"] = cached_info.get("modelVersion")
+                return d
+        
         return self._get_attrs(self.coordinator.data)
 
 class PrintStatusSensor(KEntity, SensorEntity):
@@ -469,60 +483,29 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
     ents: list[SensorEntity] = []
 
-    # Status sensor
+    # Core sensors
     ents.append(PrintStatusSensor(coord))
 
-    # Simple field sensors from SPECS
-    # Model detection logic
-    printermodel = ModelDetection(coord.data)
+    # Add box temperature if supported by model and data is available
+    has_box_sensor = entry.data.get("_cached_has_box_sensor", False)
+    has_box_data = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp"))
     
-    # Debug logging for model detection
-    # _LOGGER.debug(f"Model detection - Model: '{model}', has_box_sensor: {has_box_sensor}")
-    
-    has_box = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp")) and printermodel.has_box_sensor
-    added_box_sensor = False
     for spec in SPECS:
         if spec.get("uid") == "box_temperature":
-            if has_box:
+            if has_box_data and has_box_sensor:
                 ents.append(KSimpleFieldSensor(coord, spec))
-                added_box_sensor = True
-            # if not has_box, defer adding below
         else:
             ents.append(KSimpleFieldSensor(coord, spec))
 
-    # Extra metrics you asked to expose
-    ents.append(UsedMaterialLengthSensor(coord))
-    ents.append(PrintJobTimeSensor(coord))
-    ents.append(PrintLeftTimeSensor(coord))
-    ents.append(RealTimeFlowSensor(coord))
-    ents.append(CurrentObjectSensor(coord))
-    ents.append(ObjectCountSensor(coord))
-    ents.append(KPrintControlSensor(coord))
+    # Additional metrics
+    ents.extend([
+        UsedMaterialLengthSensor(coord),
+        PrintJobTimeSensor(coord),
+        PrintLeftTimeSensor(coord),
+        RealTimeFlowSensor(coord),
+        CurrentObjectSensor(coord),
+        ObjectCountSensor(coord),
+        KPrintControlSensor(coord),
+    ])
 
     async_add_entities(ents)
-
-    # Delayed capability refresh for Box Temperature sensor: some firmwares
-    # surface boxTemp/maxBoxTemp only after boot. Add the sensor when it appears.
-    if not added_box_sensor and printermodel.has_box_sensor:
-        def _capability_check(_now) -> None:
-            nonlocal added_box_sensor
-            if added_box_sensor:
-                return
-            try:
-                d = coord.data or {}
-                has_box_now = (d.get("boxTemp") is not None) or (d.get("maxBoxTemp") is not None)
-            except Exception:
-                has_box_now = False
-            if has_box_now:
-                added_box_sensor = True
-                # Find the spec for box_temperature
-                spec = next((s for s in SPECS if s.get("uid") == "box_temperature"), None)
-                if spec is not None:
-                    # Schedule entity addition safely on the event loop
-                    hass.loop.call_soon_threadsafe(async_add_entities, [KSimpleFieldSensor(coord, spec)])
-
-        cancel = async_track_time_interval(hass, _capability_check, timedelta(seconds=5))
-        try:
-            entry.async_on_unload(cancel)
-        except Exception:
-            pass

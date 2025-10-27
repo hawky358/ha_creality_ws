@@ -9,15 +9,10 @@ This custom [Home Assistant](https://www.home-assistant.io/) integration provide
 * **Direct WebSocket** connection (local, no cloud).
 * **Push updates**; no polling.
 * **States:** `idle`, `printing`, `paused`, `stopped`, `completed`, `error`, `self-testing`.
-* **Optional power switch binding** to a `switch` entity for accurate “Off” handling.
+* **Optional power switch binding** to a `switch` entity for accurate "Off" handling.
 * **Entities:** status, progress, time left, temperatures (nozzle/bed/chamber), current layer/total layers, etc.
 * **Controls:** pause, resume, stop, light toggle.
-* **Camera:** auto-detects stream type by model:
-  - K1/K1C/K1 Max: Direct MJPEG stream via Home Assistant (camera included)
-  - K1 SE: MJPEG stream (camera is optional accessory)
-  - K2 family: **Native WebRTC streaming** using Home Assistant's built-in go2rtc service
-  - Ender 3 V3 family: MJPEG stream (camera is optional accessory)
-  - Creality Hi: Direct MJPEG stream via Home Assistant (camera included)
+* **Camera:** auto-detects stream type by model (MJPEG or WebRTC).
 * **Lovelace card**: dependency-free, uses HA fonts, progress ring, contextual chips, telemetry pills.
 * **Style Editor**: Built-in theme customization with color picker for all card elements.
 
@@ -42,11 +37,10 @@ The integration automatically installs the following Python packages:
 - `websockets>=10.4` - For WebSocket communication with printers
 
 **Camera Dependencies:**
-- **K1 family cameras**: No additional dependencies required (direct MJPEG streaming)
-- **K2 family cameras**: Requires Home Assistant's built-in **go2rtc** service for native WebRTC streaming
+- **K1 family & Ender 3 V3 family cameras**: No additional dependencies required (MJPEG streaming)
+- **K2 family cameras**: Requires Home Assistant's built-in **go2rtc** service for WebRTC streaming
   - go2rtc is included with Home Assistant core (no HACS installation needed)
   - Automatically available on `localhost:11984` when Home Assistant is running
-  - Provides native WebRTC streaming without additional Python packages
 
 ---
 
@@ -72,16 +66,14 @@ If auto-detection doesn't choose your preferred stream, you can force it under t
 
 - **Camera Mode**: 
   - `auto` (default) - Automatically detect based on printer model
-  - `mjpeg` - Force direct MJPEG stream (K1 family style)
-  - `webrtc` - Force native WebRTC streaming (K2 family style)
-
-**Note:** When forcing `webrtc` mode, the integration will use native WebRTC streaming via Home Assistant's built-in go2rtc service.
+  - `mjpeg` - Force direct MJPEG stream
+  - `webrtc` - Force WebRTC streaming
 
 ---
 
 ## Lovelace Card
 
-This repository **bundles** a standalone card. The integration copies the file to `/config/www/ha_creality_ws/k_printer_card.js` on setup and **auto-registers** the Lovelace resource **in storage mode**.
+This repository **bundles** a standalone card. The integration serves the card file directly from its own `www/` directory (at `/ha_creality_ws/k_printer_card.js`) and **auto-registers** the Lovelace resource **in storage mode**.
 
 ### Card screenshots
 
@@ -109,7 +101,7 @@ Processing
   The integration registers the resource automatically with cache-busting:
 
   ```
-  /local/ha_creality_ws/k_printer_card.js?v=<build_mtime>   (type: module)
+  /ha_creality_ws/k_printer_card.js?v=1   (type: module)
   ```
 
   If you ever remove/re-add the integration or migrate dashboards, verify it under:
@@ -118,14 +110,14 @@ Processing
 * **YAML mode**
   Add this to your configuration:
 
-  ```yaml
+    ```yaml
   lovelace:
     resources:
-      - url: /local/ha_creality_ws/k_printer_card.js
+      - url: /ha_creality_ws/k_printer_card.js
         type: module
   ```
-
-  (Make sure the file exists at `<config>/www/ha_creality_ws/k_printer_card.js`. The integration deploys it; if it’s missing, restart HA once.)
+  
+  The card is served from the integration's own `www/` directory, not from `<config>/www/`.
 
 ### Forcing Storage mode (if you previously used YAML)
 
@@ -149,7 +141,7 @@ Lovelace caches frontend resources aggressively. After installing/updating the c
 If you still see stale UI, append a cache-buster query once:
 
 ```
-/local/ha_creality_ws/k_printer_card.js?v=1
+/ha_creality_ws/k_printer_card.js?v=1
 ```
 
 Then remove the `?v=` the next time.
@@ -158,7 +150,7 @@ Then remove the `?v=` the next time.
 
 ## Card Usage
 
-The card’s element tag is **`custom:k-printer-card`**.
+The card's element tag is **`custom:k-printer-card`**.
 
 Add via UI (Manual card) or YAML:
 
@@ -253,6 +245,28 @@ The theme data is stored per card instance, so each card can have its own unique
 
 ---
 
+## Camera
+
+The integration auto-detects the printer model and creates the appropriate camera entity. Camera support varies by model:
+
+### Camera Support by Model
+
+**MJPEG Cameras:**
+- **K1/K1C/K1 Max**: Camera included. Works with all Home Assistant camera cards.
+- **K1 SE**: Camera is optional accessory (gracefully handles when not present).
+- **Ender 3 V3 family**: Camera is optional accessory (gracefully handles when not present).
+- **Creality Hi**: Camera included. Works with all Home Assistant camera cards.
+
+**WebRTC Cameras:**
+- **K2 family** (K2, K2 Pro, K2 Plus): Native WebRTC streaming using Home Assistant's built-in go2rtc service.
+  - Uses go2rtc for WebRTC streaming
+  - Configures go2rtc to connect to the printer's WebRTC signaling endpoint
+  - Forwards WebRTC offers/answers between Home Assistant frontend and go2rtc
+  - Provides native WebRTC streaming without additional HACS integrations
+  - Works with all standard Home Assistant camera cards that support WebRTC
+
+---
+
 ## Troubleshooting
 
 * **"Configuration error" in picker or blank card**
@@ -263,7 +277,7 @@ The theme data is stored per card instance, so each card can have its own unique
 * **Wrong states when powered off**
   Set the **Power Switch** in the integration's Configure dialog.
 * **Resource missing in storage mode**
-  Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/local/ha_creality_ws/k_printer_card.js`.
+  Remove + re-add the integration or add the resource manually under **Dashboards → Resources** pointing to `/ha_creality_ws/k_printer_card.js`.
 * **WebRTC camera not working**
   If K2 family cameras show fallback images instead of live video:
   1. **Verify go2rtc is running**: Check `http://localhost:11984` in your browser
@@ -284,32 +298,6 @@ The theme data is stored per card instance, so each card can have its own unique
   - For `webrtc` mode: ensure Home Assistant's built-in go2rtc service is running
 
 ---
-
-## Camera specifics by model
-
-- The integration auto-detects the printer model and creates the appropriate camera entity:
-  - **K1/K1C/K1 Max**: Direct MJPEG camera (camera included). Works with all Home Assistant camera cards (Picture Glance, Picture Entity, etc.)
-  - **K1 SE**: MJPEG camera (optional accessory - gracefully handles when not present)
-  - **K2 family**: **Native WebRTC camera**. Provides native WebRTC streaming using Home Assistant's built-in go2rtc service
-  - **Ender 3 V3 family**: MJPEG camera (optional accessory - gracefully handles when not present)
-  - **Creality Hi**: Direct MJPEG camera (camera included)
-
-- **Native WebRTC streaming**: For K2 printers, the integration:
-  - Uses Home Assistant's built-in go2rtc service for WebRTC streaming
-  - Configures go2rtc to connect to the printer's WebRTC signaling endpoint
-  - Forwards WebRTC offers/answers between Home Assistant frontend and go2rtc
-  - Provides native WebRTC streaming without additional HACS integrations
-  - Works with all standard Home Assistant camera cards that support WebRTC
-
-- **Dependencies**: WebRTC functionality uses Home Assistant's built-in go2rtc service. Only `websockets` Python package is required.
-
----
-
-## Status / Testing
-
-Currently verified on:
-- **Creality K1C** - Full functionality including box temperature and light controls
-- **Creality Ender 3 V3 KE** - Full functionality (no box temperature or light controls, optional camera)
 
 ## Supported Models
 
@@ -333,6 +321,14 @@ Currently verified on:
 - **Creality Hi** - Box temperature sensor & control, light, MJPEG camera
 
 Other K-series models may work but are unverified.
+
+---
+
+## Status / Testing
+
+Currently verified on:
+- **Creality K1C** - Full functionality including box temperature and light controls
+- **Creality Ender 3 V3 KE** - Full functionality (no box temperature or light controls, optional camera)
 
 ---
 

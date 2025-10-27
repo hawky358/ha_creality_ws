@@ -574,6 +574,7 @@ class KPrinterCardEditor extends HTMLElement {
     this._root.innerHTML = `
       <style>${style}</style>
       <div class="editor-container">
+        <h2 style="margin: 0 0 16px 0; font-size: 18px; color: var(--primary-text-color);">Creality Printer Card Configuration</h2>
         <div class="tabs">
           <div class="tab active" data-tab="entities">Entities</div>
           <div class="tab" data-tab="theme">Theme</div>
@@ -805,22 +806,76 @@ class KPrinterCardEditor extends HTMLElement {
   _setupEntitiesForm() {
     this._entitiesForm = this._root.getElementById('entities-form');
     this._entitiesForm.hass = this._hass;
+    
+    // Helper text mapping for form fields
+    const helperText = {
+      "name": "Display name for the printer card",
+      "camera": "Camera entity for live video feed",
+      "status": "Sensor showing current print status",
+      "progress": "Sensor showing print progress (0-100%)",
+      "time_left": "Sensor showing remaining print time (seconds)",
+      "nozzle": "Sensor showing nozzle temperature",
+      "bed": "Sensor showing bed temperature",
+      "box": "Sensor showing enclosure temperature (optional)",
+      "layer": "Sensor showing current print layer",
+      "total_layers": "Sensor showing total print layers",
+      "light": "Switch entity for printer light control",
+      "pause_btn": "Button entity to pause printing",
+      "resume_btn": "Button entity to resume printing",
+      "stop_btn": "Button entity to stop printing"
+    };
+    
     this._entitiesForm.schema = [
-      { name: "name",         label: "Printer Name", selector: { text: {} } },
-      { name: "camera",       label: "Camera", selector: { entity: { domain: "camera" } } },
-      { name: "status",       label: "Print Status Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "progress",     label: "Print Progress Sensor (%)", selector: { entity: { domain: "sensor" } } },
-      { name: "time_left",    label: "Time Left Sensor (seconds)", selector: { entity: { domain: "sensor" } } },
-      { name: "nozzle",       label: "Nozzle Temperature Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "bed",          label: "Bed Temperature Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "box",          label: "Enclosure Temperature Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "layer",        label: "Current Layer Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "total_layers", label: "Total Layers Sensor", selector: { entity: { domain: "sensor" } } },
-      { name: "light",        label: "Light Switch", selector: { entity: { domain: "switch" } } },
-      { name: "pause_btn",    label: "Pause Button", selector: { entity: { domain: "button" } } },
-      { name: "resume_btn",   label: "Resume Button", selector: { entity: { domain: "button" } } },
-      { name: "stop_btn",     label: "Stop Button", selector: { entity: { domain: "button" } } },
+      { name: "name",         selector: { text: {} } },
+      { name: "camera",       selector: { entity: { domain: "camera" } } },
+      { name: "status",       selector: { entity: { domain: "sensor" } } },
+      { name: "progress",     selector: { entity: { domain: "sensor" } } },
+      { name: "time_left",    selector: { entity: { domain: "sensor" } } },
+      { name: "nozzle",       selector: { entity: { domain: "sensor" } } },
+      { name: "bed",          selector: { entity: { domain: "sensor" } } },
+      { name: "box",          selector: { entity: { domain: "sensor" } } },
+      { name: "layer",        selector: { entity: { domain: "sensor" } } },
+      { name: "total_layers", selector: { entity: { domain: "sensor" } } },
+      { name: "light",        selector: { entity: { domain: "switch" } } },
+      { name: "pause_btn",    selector: { entity: { domain: "button" } } },
+      { name: "resume_btn",   selector: { entity: { domain: "button" } } },
+      { name: "stop_btn",     selector: { entity: { domain: "button" } } },
     ];
+    
+    // Label text mapping for form fields
+    const labelText = {
+      "name": "Printer Name",
+      "camera": "Camera",
+      "status": "Print Status Sensor",
+      "progress": "Print Progress Sensor (%)",
+      "time_left": "Time Left Sensor",
+      "nozzle": "Nozzle Temperature Sensor",
+      "bed": "Bed Temperature Sensor",
+      "box": "Enclosure Temperature Sensor",
+      "layer": "Current Layer Sensor",
+      "total_layers": "Total Layers Sensor",
+      "light": "Light Switch",
+      "pause_btn": "Pause Button",
+      "resume_btn": "Resume Button",
+      "stop_btn": "Stop Button"
+    };
+    
+    // Add label computation using computeLabel if supported
+    if (this._entitiesForm.computeLabel) {
+      const originalComputeLabel = this._entitiesForm.computeLabel.bind(this._entitiesForm);
+      this._entitiesForm.computeLabel = (schema) => {
+        return labelText[schema.name] || originalComputeLabel(schema);
+      };
+    }
+    
+    // Add helper text using computeHelper if supported
+    if (this._entitiesForm.computeHelper) {
+      const originalComputeHelper = this._entitiesForm.computeHelper.bind(this._entitiesForm);
+      this._entitiesForm.computeHelper = (schema) => {
+        return helperText[schema.name] || originalComputeHelper(schema);
+      };
+    }
+    
     this._entitiesForm.data = this._cfg;
     
     this._entitiesForm.addEventListener("value-changed", (ev) => {

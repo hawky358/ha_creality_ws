@@ -5,6 +5,8 @@ CONF_NAME = "name"
 CONF_DISCOVERY_SCAN_CIDR = "scan_cidr"
 CONF_POWER_SWITCH = "power_switch"
 CONF_CAMERA_MODE = "camera_mode"
+CONF_GO2RTC_URL = "go2rtc_url"
+CONF_GO2RTC_PORT = "go2rtc_port"
 
 DEFAULT_NAME = "Creality Printer (WS)"
 
@@ -34,3 +36,7 @@ RETRY_MIN_BACKOFF = 1.0
 RETRY_MAX_BACKOFF = 5.0
 HEARTBEAT_SECS = 10.0
 PROBE_ON_SILENCE_SECS = 10.0
+
+# go2rtc defaults
+DEFAULT_GO2RTC_URL = "localhost"
+DEFAULT_GO2RTC_PORT = 11984

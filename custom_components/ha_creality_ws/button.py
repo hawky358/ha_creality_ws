@@ -7,7 +7,7 @@ from homeassistant.components.button import ButtonEntity
 from .entity import KEntity
 from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)  # <-- fixes NameError on import
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]

@@ -34,7 +34,15 @@ except Exception:  # compatibility with older cores
     except Exception:  # very old cores
         CameraEntityFeature = None  # type: ignore[assignment]
 
-from .const import DOMAIN, MJPEG_URL_TEMPLATE, WEBRTC_URL_TEMPLATE
+from .const import (
+    DOMAIN, 
+    MJPEG_URL_TEMPLATE, 
+    WEBRTC_URL_TEMPLATE,
+    CONF_GO2RTC_URL,
+    CONF_GO2RTC_PORT,
+    DEFAULT_GO2RTC_URL,
+    DEFAULT_GO2RTC_PORT,
+)
 from .entity import KEntity
 from .utils import ModelDetection
 
@@ -297,22 +305,35 @@ class CrealityWebRTCCamera(_BaseCamera):
     - Full WebRTC offer/answer negotiation support
     """
 
-    def __init__(self, coordinator, signaling_url: str, use_proxy: bool = False) -> None:
+    def __init__(
+        self, 
+        coordinator, 
+        signaling_url: str, 
+        use_proxy: bool = False,
+        go2rtc_url: str | None = None,
+        go2rtc_port: int | None = None,
+    ) -> None:
         """Initialize the WebRTC camera.
         
         Args:
             coordinator: The printer coordinator
             signaling_url: WebRTC signaling URL from the printer
             use_proxy: Whether to use proxy (deprecated, kept for compatibility)
+            go2rtc_url: go2rtc server URL (default: localhost)
+            go2rtc_port: go2rtc server port (default: 11984)
         """
         super().__init__(coordinator, "Printer Camera", "camera")
         self._upstream_signaling_url = signaling_url
         self._use_proxy = use_proxy  # Deprecated, kept for compatibility
-        self._go2rtc_url: str | None = None
+        self._go2rtc_url: str | None = go2rtc_url or DEFAULT_GO2RTC_URL
+        self._go2rtc_port: int | None = go2rtc_port or DEFAULT_GO2RTC_PORT
         self._stream_name: str | None = None
         self._last_error: str | None = None
         
-        _LOGGER.debug("ha_creality_ws: WebRTC camera initialized with signaling URL: %s", signaling_url)
+        _LOGGER.debug(
+            "ha_creality_ws: WebRTC camera initialized with signaling URL: %s, go2rtc: %s:%s",
+            signaling_url, self._go2rtc_url, self._go2rtc_port
+        )
         
         # Set up supported features for native WebRTC streaming
         self._setup_supported_features()
@@ -347,10 +368,12 @@ class CrealityWebRTCCamera(_BaseCamera):
 
         self._attr_supported_features = _FeatureMask(mask)
         _LOGGER.info(
-            "ha_creality_ws: WebRTC camera features: STREAM=%s, ON_DEMAND=%s, mask=%d",
+            "ha_creality_ws: WebRTC camera features: STREAM=%s, ON_DEMAND=%s, mask=%d, go2rtc=%s:%s",
             bool(mask & 2),  # STREAM is bit 1 (2)
             bool(mask & 1),  # ON_DEMAND is bit 0 (1)
-            mask
+            mask,
+            self._go2rtc_url,
+            self._go2rtc_port,
         )
 
     @property
@@ -365,7 +388,8 @@ class CrealityWebRTCCamera(_BaseCamera):
             str: WebRTC stream source URL, or None if not configured
         """
         if self._go2rtc_url and self._stream_name:
-            return f"{self._go2rtc_url}/api/webrtc?src={self._stream_name}"
+            go2rtc_url_with_port = f"http://{self._go2rtc_url}:{self._go2rtc_port}"
+            return f"{go2rtc_url_with_port}/api/webrtc?src={self._stream_name}"
         return None
 
     async def async_get_stream_source(self) -> str:
@@ -388,13 +412,9 @@ class CrealityWebRTCCamera(_BaseCamera):
         """
         await super().async_added_to_hass()
         
-        # Get go2rtc URL and configure the stream
-        self._go2rtc_url = await self._get_go2rtc_url()
-        if self._go2rtc_url:
-            await self._configure_go2rtc_stream()
-            _LOGGER.info("ha_creality_ws: WebRTC camera successfully configured with go2rtc")
-        else:
-            _LOGGER.warning("ha_creality_ws: go2rtc not available, WebRTC camera will use fallback images")
+        # Configure the stream (go2rtc URL is already set in __init__)
+        await self._configure_go2rtc_stream()
+        _LOGGER.info("ha_creality_ws: WebRTC camera successfully configured with go2rtc")
 
     async def async_camera_image(
         self,
@@ -421,7 +441,7 @@ class CrealityWebRTCCamera(_BaseCamera):
         if not height or height <= 0:
             height = None
             
-        if not self._go2rtc_url or not self._stream_name:
+        if not self._go2rtc_url or not self._stream_name or not self._go2rtc_port:
             _LOGGER.debug("ha_creality_ws: go2rtc not configured, returning fallback image")
             return await self._fallback_image()
 
@@ -429,7 +449,8 @@ class CrealityWebRTCCamera(_BaseCamera):
             session = async_get_clientsession(self.hass)
             # Request a single frame from go2rtc using the snapshot API
             # According to go2rtc API docs: GET /api/frame.jpeg?src=stream_name
-            image_url = f"{self._go2rtc_url.rstrip('/')}/api/frame.jpeg?src={self._stream_name}"
+            go2rtc_base_url = f"http://{self._go2rtc_url}:{self._go2rtc_port}"
+            image_url = f"{go2rtc_base_url}/api/frame.jpeg?src={self._stream_name}"
             
             _LOGGER.debug("ha_creality_ws: requesting snapshot from go2rtc: %s", image_url)
             
@@ -470,7 +491,7 @@ class CrealityWebRTCCamera(_BaseCamera):
         Returns:
             web.Response: HTTP response with MJPEG stream or error
         """
-        if not self._go2rtc_url or not self._stream_name:
+        if not self._go2rtc_url or not self._stream_name or not self._go2rtc_port:
             _LOGGER.warning("ha_creality_ws: go2rtc not available for streaming")
             return web.Response(status=503, text="go2rtc not available")
 
@@ -478,7 +499,8 @@ class CrealityWebRTCCamera(_BaseCamera):
             session = async_get_clientsession(self.hass)
             # Get MJPEG stream from go2rtc using the stream API
             # According to go2rtc API docs: GET /api/stream.mjpeg?src=stream_name
-            mjpeg_stream_url = f"{self._go2rtc_url.rstrip('/')}/api/stream.mjpeg?src={self._stream_name}"
+            go2rtc_base_url = f"http://{self._go2rtc_url}:{self._go2rtc_port}"
+            mjpeg_stream_url = f"{go2rtc_base_url}/api/stream.mjpeg?src={self._stream_name}"
             
             _LOGGER.debug("ha_creality_ws: proxying MJPEG stream from go2rtc: %s", mjpeg_stream_url)
             
@@ -508,25 +530,15 @@ class CrealityWebRTCCamera(_BaseCamera):
             _LOGGER.error("ha_creality_ws: unexpected error proxying go2rtc MJPEG stream: %s", exc)
             return web.Response(status=502, text="Upstream go2rtc stream error")
 
-    async def _get_go2rtc_url(self) -> str | None:
-        """Get the go2rtc URL using built-in Home Assistant features.
+    def _get_go2rtc_base_url(self) -> str:
+        """Get the go2rtc base URL from configuration.
         
-        go2rtc is a built-in Home Assistant service that's always available
-        on localhost:11984 when running as part of Home Assistant core.
-        This method returns the standard go2rtc URL.
+        Returns the configured go2rtc URL with port.
         
         Returns:
-            str | None: go2rtc URL, or None if unavailable
+            str: go2rtc base URL (e.g., "http://localhost:11984")
         """
-        try:
-            # go2rtc is a built-in Home Assistant service, always available on localhost:11984
-            # when running as part of Home Assistant core
-            _LOGGER.info("ha_creality_ws: using built-in go2rtc service on localhost:11984")
-            return "http://localhost:11984"
-
-        except Exception as exc:
-            _LOGGER.warning("ha_creality_ws: failed to get go2rtc URL: %s", exc)
-            return None
+        return f"http://{self._go2rtc_url}:{self._go2rtc_port}"
 
     async def _configure_go2rtc_stream(self) -> None:
         """Configure go2rtc to pull the WebRTC stream from the printer.
@@ -535,8 +547,8 @@ class CrealityWebRTCCamera(_BaseCamera):
         WebRTC signaling endpoint using go2rtc's native Creality support.
         It creates a unique stream name and configures the stream source.
         """
-        if not self._go2rtc_url:
-            _LOGGER.error("ha_creality_ws: cannot configure go2rtc stream - no go2rtc URL")
+        if not self._go2rtc_url or not self._go2rtc_port:
+            _LOGGER.error("ha_creality_ws: cannot configure go2rtc stream - missing URL or port")
             return
 
         # Create a unique stream name for this printer based on its IP address
@@ -557,16 +569,19 @@ class CrealityWebRTCCamera(_BaseCamera):
         go2rtc_src = f"webrtc:{webrtc_printer_url}#format=creality"
 
         _LOGGER.info(
-            "ha_creality_ws: configuring go2rtc stream '%s' with native Creality support: '%s'",
+            "ha_creality_ws: configuring go2rtc stream '%s' with native Creality support: '%s' (go2rtc=%s:%s)",
             self._stream_name,
-            go2rtc_src
+            go2rtc_src,
+            self._go2rtc_url,
+            self._go2rtc_port,
         )
 
         try:
             # Use the go2rtc streams API to create/update the stream
             # According to go2rtc OpenAPI docs: PUT /api/streams - Create new stream
             session = async_get_clientsession(self.hass)
-            api_url = f"{self._go2rtc_url.rstrip('/')}/api/streams"
+            go2rtc_base_url = self._get_go2rtc_base_url()
+            api_url = f"{go2rtc_base_url}/api/streams"
 
             # Create stream using PUT with query parameters
             params = {
@@ -658,7 +673,8 @@ class CrealityWebRTCCamera(_BaseCamera):
 
         try:
             session = async_get_clientsession(self.hass)
-            webrtc_url = f"{self._go2rtc_url}/api/webrtc?src={self._stream_name}"
+            go2rtc_base_url = self._get_go2rtc_base_url()
+            webrtc_url = f"{go2rtc_base_url}/api/webrtc?src={self._stream_name}"
             _LOGGER.debug(
                 "ha_creality_ws: forwarding offer to go2rtc URL: %s", webrtc_url
             )
@@ -801,6 +817,7 @@ class CrealityWebRTCCamera(_BaseCamera):
         """
         attrs = {
             "go2rtc_url": self._go2rtc_url,
+            "go2rtc_port": self._go2rtc_port,
             "go2rtc_stream_name": self._stream_name,
             "upstream_signaling_url": self._upstream_signaling_url,
             "webrtc_using_proxy": self._use_proxy,
@@ -879,43 +896,55 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     host = entry.data["host"]
     use_proxy = False  # No longer needed with go2rtc approach
 
-    _LOGGER.debug("ha_creality_ws: setting up camera for printer at %s", host)
+    # Get go2rtc configuration from options
+    go2rtc_url = entry.options.get(CONF_GO2RTC_URL, DEFAULT_GO2RTC_URL)
+    go2rtc_port = entry.options.get(CONF_GO2RTC_PORT, DEFAULT_GO2RTC_PORT)
+
+    _LOGGER.debug("ha_creality_ws: setting up camera for printer at %s, go2rtc=%s:%s", host, go2rtc_url, go2rtc_port)
 
     # Respect user-forced camera mode first
     cam_mode = entry.options.get("camera_mode")
     if cam_mode == "webrtc":
         _LOGGER.info("ha_creality_ws: user forced WebRTC mode for %s", host)
-        async_add_entities([CrealityWebRTCCamera(coord, WEBRTC_URL_TEMPLATE.format(host=host), use_proxy=use_proxy)])
+        async_add_entities([
+            CrealityWebRTCCamera(
+                coord, 
+                WEBRTC_URL_TEMPLATE.format(host=host), 
+                use_proxy=use_proxy,
+                go2rtc_url=go2rtc_url,
+                go2rtc_port=go2rtc_port,
+            )
+        ])
         return
     if cam_mode == "mjpeg":
         _LOGGER.info("ha_creality_ws: user forced MJPEG mode for %s", host)
         async_add_entities([CrealityMjpegCamera(coord, MJPEG_URL_TEMPLATE.format(host=host))])
         return
 
-    # If printer is powered, wait briefly for first telemetry to identify model
-    # This avoids misclassifying K2 as MJPEG when it's just booting.
-    if not coord.power_is_off():
-        try:
-            await coord.wait_first_connect(timeout=2.0)
-        except Exception:
-            _LOGGER.debug("ha_creality_ws: timeout waiting for first connection to %s", host)
-            pass
-
-    printermodel = ModelDetection(coord.data)
-
+    # Use cached camera type from entry data (detected during onboarding)
+    cached_camera_type = entry.data.get("_cached_camera_type", "mjpeg")
+    
     # WebRTC cameras (K2 family - always present)
     webrtc_url = WEBRTC_URL_TEMPLATE.format(host=host)
-    if printermodel.is_k2_family:
-        _LOGGER.info("ha_creality_ws: detected K2 family printer, using WebRTC camera")
-        async_add_entities([CrealityWebRTCCamera(coord, webrtc_url, use_proxy=use_proxy)])
+    if cached_camera_type == "webrtc":
+        _LOGGER.info("ha_creality_ws: using cached WebRTC camera detection for %s", host)
+        async_add_entities([
+            CrealityWebRTCCamera(
+                coord, 
+                webrtc_url, 
+                use_proxy=use_proxy,
+                go2rtc_url=go2rtc_url,
+                go2rtc_port=go2rtc_port,
+            )
+        ])
         return
 
-    # MJPEG cameras with optional handling
+    # MJPEG cameras (default or optional)
     mjpeg_url = MJPEG_URL_TEMPLATE.format(host=host)
     
-    # Models with optional cameras (K1 SE, Ender 3 V3 family)
-    if printermodel.is_k1_se or printermodel.is_ender_v3_family:
-        _LOGGER.info("ha_creality_ws: detected optional camera model, attempting MJPEG")
+    # Check if camera type is mjpeg_optional (K1 SE, Ender 3 V3 family)
+    if cached_camera_type == "mjpeg_optional":
+        _LOGGER.info("ha_creality_ws: using cached optional camera model, attempting MJPEG for %s", host)
         try:
             async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
         except Exception:
@@ -923,20 +952,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             _LOGGER.info("ha_creality_ws: optional camera not available for %s", host)
             pass
         return
-
-    # Models with default MJPEG cameras (K1 family except SE, K1 Max, Creality Hi)
-    if printermodel.is_k1_family or printermodel.is_k1_max or printermodel.is_creality_hi:
-        _LOGGER.info("ha_creality_ws: detected MJPEG camera model")
-        async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])
-        return
-
-    # Otherwise, detect WebRTC by probing the signaling endpoint quickly
-    _LOGGER.debug("ha_creality_ws: probing for WebRTC support at %s", webrtc_url)
-    if await _probe_webrtc_signaling(hass, webrtc_url, timeout=1.5):
-        _LOGGER.info("ha_creality_ws: WebRTC signaling detected, using WebRTC camera")
-        async_add_entities([CrealityWebRTCCamera(coord, webrtc_url, use_proxy=use_proxy)])
-        return
-
-    # Fallback to MJPEG
-    _LOGGER.info("ha_creality_ws: no WebRTC detected, falling back to MJPEG camera")
+    
+    # Default MJPEG cameras
+    _LOGGER.info("ha_creality_ws: using cached MJPEG camera detection for %s", host)
     async_add_entities([CrealityMjpegCamera(coord, mjpeg_url)])

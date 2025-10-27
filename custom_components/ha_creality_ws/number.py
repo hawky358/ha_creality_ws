@@ -15,57 +15,27 @@ except Exception:  # older cores
 
 from .const import DOMAIN
 from .entity import KEntity
-from .utils import ModelDetection
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
     ents: list[NumberEntity] = []
 
-    # ---- Unified print tuning: writes BOTH speed and flow together ----
+    # Standard entities for all printers
     ents.append(PrintTuningPercent(coord))
-
-    # ---- Target temperatures (number input boxes) ----
     ents.append(NozzleTargetNumber(coord))
     ents.append(BedTargetNumber(coord, bed_index=0))
     
-    # Model detection logic
-    printermodel = ModelDetection(coord.data) 
-    added_box = False
-    if coord.data.get("maxBoxTemp") and printermodel.has_box_control:
+    # Box temperature control (K2 Pro/Plus only)
+    has_box_control = entry.data.get("_cached_has_box_control", False)
+    if coord.data.get("maxBoxTemp") and has_box_control:
         ents.append(BoxTargetNumber(coord))
-        added_box = True
-    # ---- Fan percentages via M106 Pn Sxxx (no switches) ----
+    
+    # Fan controls
     ents.append(_FanPctNumber(coord, "Model Fan %", "modelFanPct", "model_fan_pct", channel=0))
     ents.append(_FanPctNumber(coord, "Case Fan %", "caseFanPct", "case_fan_pct", channel=1))
     ents.append(_FanPctNumber(coord, "Side Fan %", "auxiliaryFanPct", "side_fan_pct", channel=2))
 
     async_add_entities(ents)
-
-    # Delayed capability refresh: some firmwares expose maxBoxTemp later in boot.
-    # Poll briefly and add BoxTargetNumber once capability appears.
-    if not added_box and printermodel.has_box_control:
-        def _capability_check(_now) -> None:
-            nonlocal added_box
-            if added_box:
-                return
-            try:
-                has_box = coord.data.get("maxBoxTemp") is not None
-            except Exception:
-                has_box = False
-            if has_box:
-                added_box = True
-                # Schedule entity addition on event loop
-                hass.loop.call_soon_threadsafe(async_add_entities, [BoxTargetNumber(coord)])
-                # Once added, we can stop further checks by cancelling the interval
-
-        # Run every 5 seconds for up to ~2 minutes (caller can cancel on unload)
-        cancel = async_track_time_interval(hass, _capability_check, timedelta(seconds=5))
-        # Ensure the interval stops on entry unload
-        try:
-            entry.async_on_unload(cancel)
-        except Exception:
-            # Best-effort; integration unload will drop callback references anyway
-            pass
 
 
 # ---------- Unified speed+flow percent ----------
@@ -78,9 +48,9 @@ class PrintTuningPercent(KEntity, NumberEntity):
     _attr_name = "Print Tuning %"
     _attr_icon = "mdi:speedometer"
     _attr_native_unit_of_measurement = UNIT_PERCENT
-    _attr_mode = NumberMode.SLIDER  # keep as slider for tuning; change to BOX if you prefer
+    _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = 1.0
-    _attr_native_max_value = 1000.0  # you tested 666%; leave room for speed benches
+    _attr_native_max_value = 1000.0
     _attr_native_step = 1.0
 
     def __init__(self, coordinator) -> None:
@@ -196,15 +166,12 @@ class BoxTargetNumber(KEntity, NumberEntity):
             return None
 
     async def async_set_native_value(self, value: float) -> None:
-        # If you change this manually anything <= 40 will reset to 0. The active chamber heater only turns on when > 40C (K2Plus)
-        if value <= 40:
-            v = 0
-        else:
-            v = int(round(value))
-            v = max(int(self._attr_native_min_value or 0), v)
-            max_v = self._attr_native_max_value
-            if max_v is not None:
-                v = min(int(max_v), v)
+        # Chamber heater only activates when > 40°C (K2 Plus behavior)
+        v = 0 if value <= 40 else int(round(value))
+        v = max(int(self._attr_native_min_value or 0), v)
+        max_v = self._attr_native_max_value
+        if max_v is not None:
+            v = min(int(max_v), v)
         await self.coordinator.client.send_set_retry(boxTempControl=v)
 
 

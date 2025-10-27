@@ -377,12 +377,22 @@ class Server:
                 LOGGER.info("PC(%s) received data channel: %s", id(pc), channel.label)
             except Exception:
                 pass
-        # send synthetic video (and audio)
-        video_track = SyntheticVideoTrack(self.width, self.height, self.fps)
-        pc.addTrack(video_track)
-        LOGGER.info("Added video track: %dx%d @ %dfps", self.width, self.height, self.fps)
+        # First, set the remote description to see what media the client is offering
+        await pc.setRemoteDescription(RTCSessionDescription(sdp=offer_sdp, type="offer"))
         
-        if self.audio:
+        # Detect which media types are in the offer
+        offer_has_video = "m=video" in offer_sdp
+        offer_has_audio = "m=audio" in offer_sdp
+        
+        LOGGER.info("Offer has video=%s, audio=%s", offer_has_video, offer_has_audio)
+        
+        # Only add tracks for media types present in the offer
+        if offer_has_video:
+            video_track = SyntheticVideoTrack(self.width, self.height, self.fps)
+            pc.addTrack(video_track)
+            LOGGER.info("Added video track: %dx%d @ %dfps", self.width, self.height, self.fps)
+        
+        if offer_has_audio and self.audio:
             audio_track = SyntheticAudioTrack()
             pc.addTrack(audio_track)
             LOGGER.info("Added audio track: %dHz sine wave", audio_track.samplerate)
@@ -395,8 +405,7 @@ class Server:
             await sink.start()
             sink.addTrack(track)
 
-        # Set remote and generate answer
-        await pc.setRemoteDescription(RTCSessionDescription(sdp=offer_sdp, type="offer"))
+        # Generate answer (remote description was already set above)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         LOGGER.info("Created answer SDP length=%d for PC id=%s", len(pc.localDescription.sdp or ""), id(pc))

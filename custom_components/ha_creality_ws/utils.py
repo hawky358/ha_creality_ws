@@ -39,12 +39,21 @@ def parse_model_version(s: str | None) -> tuple[str | None, str | None]:
         k, v = seg.split(":", 1)
         parts[k.strip().lower()] = (v.strip() or None)
 
-    hw = parts.get("printer hw ver") or parts.get("dwin hw ver")
-    sw = parts.get("printer sw ver") or parts.get("dwin sw ver")
-    if hw and hw == parts.get("dwin hw ver"):
-        hw = f"DWIN {hw}"
-    if sw and sw == parts.get("dwin sw ver"):
-        sw = f"DWIN {sw}"
+    # Try printer versions first, then DWIN versions as fallback
+    hw = parts.get("printer hw ver")
+    sw = parts.get("printer sw ver")
+    
+    # If printer versions are empty, use DWIN versions (prefixed with "DWIN")
+    if not hw:
+        hw = parts.get("dwin hw ver")
+        if hw:
+            hw = f"DWIN {hw}"
+    
+    if not sw:
+        sw = parts.get("dwin sw ver")
+        if sw:
+            sw = f"DWIN {sw}"
+    
     return (hw, sw)
 
 
@@ -103,84 +112,63 @@ def extract_host_from_zeroconf(info: Any) -> Optional[str]:
         pass
     return None
 
-class ModelDetection():
+class ModelDetection:
+    """Detect printer model and capabilities from telemetry data."""
+    
     def __init__(self, coord_data):
-        
         self.model = (coord_data or {}).get("model") or ""
         self.model_l = str(self.model).lower()
-        self.modelversion = (coord_data or {}).get("'modelVersion': ") or "" #can do something here with checking against a list of known model/mainboard versions. This may be more reliable that checking model name, but I don't have info on other boards.
+        # Note: modelVersion could be used for more reliable detection
+        # but requires known model/mainboard version mapping
         
         # Individual printer model detection
         # K1 Base - "CR-K1"
-        self.is_k1_base = (
-            "cr-k1" in self.model_l or
-            self.model == "CR-K1"
-        )
+        self.is_k1_base = "cr-k1" in self.model_l
         
         # K1 SE - "K1 SE"
-        self.is_k1_se = (
-            "k1 se" in self.model_l or
-            self.model == "K1 SE"
-        )
+        self.is_k1_se = "k1 se" in self.model_l
         
         # K1 Max - "CR-K1 Max"
-        self.is_k1_max = (
-            "cr-k1 max" in self.model_l or
-            self.model == "CR-K1 Max"
-        )
+        self.is_k1_max = "cr-k1 max" in self.model_l
         
         # K2 Base - "F021"
-        self.is_k2_base = (
-            "F021" in self.model or
-            self.model == "F021"
-        )
+        self.is_k2_base = "F021" in self.model
         
         # K2 Pro - "F012"
-        self.is_k2_pro = (
-            "F012" in self.model or
-            self.model == "F012"
-        )
+        self.is_k2_pro = "F012" in self.model
         
         # K2 Plus - "F008"
-        self.is_k2_plus = (
-            "F008" in self.model or
-            self.model == "F008"
-        )
+        self.is_k2_plus = "F008" in self.model
         
         # Ender-3 V3 KE - "F005"
         self.is_ender_v3_ke = (
             "F005" in self.model or
-            self.model == "F005" or
-            "ender-3 v3 ke" in self.model_l or
-            self.model == "Ender-3 V3 KE"
+            "ender-3 v3 ke" in self.model_l
         )
         
         # Ender-3 V3 Plus - "F002"
         self.is_ender_v3_plus = (
             "F002" in self.model or
-            self.model == "F002" or
-            "ender-3 v3 plus" in self.model_l or
-            self.model == "Ender-3 V3 Plus"
+            "ender-3 v3 plus" in self.model_l
         )
         
         # Ender-3 V3 - "F001"
-        self.is_ender_v3 = (
-            "F001" in self.model or
-            self.model == "F001" or
-            "ender-3 v3" in self.model_l or
-            self.model == "Ender-3 V3"
+        # Must be exactly "ender-3 v3" (not KE, Plus, or SE)
+        # Check that it's not one of the variants first
+        is_not_variant = not (
+            self.is_ender_v3_ke or 
+            self.is_ender_v3_plus
         )
-        
-        # Ender-3 V3 SE - "Ender-3 V3 SE"
-        self.is_ender_v3_se = (
-            "ender-3 v3 se" in self.model_l or
-            self.model == "Ender-3 V3 SE"
+        self.is_ender_v3 = (
+            is_not_variant and (
+                "F001" in self.model or
+                "ender-3 v3" in self.model_l
+            )
         )
         
         # Creality Hi - "F018"
         self.is_creality_hi = (
             "F018" in self.model or
-            self.model == "F018" or
             "hi" in self.model_l
         )
         
@@ -206,10 +194,10 @@ class ModelDetection():
             self.is_ender_v3_ke or
             self.is_ender_v3_plus or
             self.is_ender_v3 or
-            self.is_ender_v3_se or
             ("ender" in self.model_l and "v3" in self.model_l)
         )
-    # Models with box temperature control: Only K2 Pro and K2 Plus
+        
+        # Feature detection
         self.has_box_control = self.is_k2_pro or self.is_k2_plus
-        self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family or self.is_creality_hi
+        self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family
         self.has_light = not (self.is_k1_se or self.is_ender_v3_family)

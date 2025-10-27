@@ -1,7 +1,6 @@
 from __future__ import annotations
 import logging
 import json
-import os
 from datetime import datetime, timedelta
 from typing import Callable, List, Optional, Any
 
@@ -16,7 +15,7 @@ import voluptuous as vol #type: ignore[import]
 
 from .const import DOMAIN, STALE_AFTER_SECS, CONF_POWER_SWITCH
 from .coordinator import KCoordinator
-from .frontend import CrealityCardRegistration  # <-- NEW IMPORT
+from .frontend import CrealityCardRegistration
 from .utils import ModelDetection
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coord.async_start()
-        # If printer is OFF, we intentionally don’t wait for connectivity.
+        # If printer is OFF, we intentionally don't wait for connectivity.
         if not coord.power_is_off():
             ok = await coord.wait_first_connect(timeout=8.0)
             if not ok:
@@ -40,7 +39,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coord.async_stop()
         raise ConfigEntryNotReady(str(exc)) from exc
 
+    # Detect and store device info during initial setup (only once)
+    # This is stored in entry.data which persists across restarts
+    if not entry.data.get("_device_info_cached"):
+        _LOGGER.info("Performing initial device detection for %s", host)
+        # Wait a bit longer to ensure we get model info
+        if not coord.power_is_off():
+            ok = await coord.wait_first_connect(timeout=10.0)
+            if ok and coord.data:
+                # Store device info in entry data
+                model = coord.data.get("model") or "K by Creality"
+                hostname = coord.data.get("hostname")
+                model_version = coord.data.get("modelVersion")
+                
+                printermodel = ModelDetection(coord.data)
+                new_data = dict(entry.data)
+                new_data["_device_info_cached"] = True
+                new_data["_cached_model"] = model
+                new_data["_cached_hostname"] = hostname
+                new_data["_cached_model_version"] = model_version
+                new_data["_cached_has_light"] = printermodel.has_light
+                new_data["_cached_has_box_sensor"] = printermodel.has_box_sensor
+                new_data["_cached_has_box_control"] = printermodel.has_box_control
+                new_data["_cached_camera_type"] = "webrtc" if printermodel.is_k2_family else (
+                    "mjpeg_optional" if (printermodel.is_k1_se or printermodel.is_ender_v3_family) else "mjpeg"
+                )
+                hass.config_entries.async_update_entry(entry, data=new_data)
+                _LOGGER.info("Device info cached: model=%s, camera=%s", model, new_data.get("_cached_camera_type"))
+        else:
+            # Printer is off, cache defaults
+            _LOGGER.info("Printer is off during first setup, caching default device info")
+            new_data = dict(entry.data)
+            new_data["_device_info_cached"] = True
+            new_data["_cached_model"] = "K by Creality"
+            new_data["_cached_has_light"] = True
+            new_data["_cached_has_box_sensor"] = False
+            new_data["_cached_has_box_control"] = False
+            new_data["_cached_camera_type"] = "mjpeg"
+            hass.config_entries.async_update_entry(entry, data=new_data)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
+    
+    # Store entry_id in coordinator for easy access
+    coord._config_entry_id = entry.entry_id
 
     # Register the Lovelace card (non-fatal on failure)
     try:
@@ -87,10 +128,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _register_diagnostic_service(hass: HomeAssistant) -> None:
-    """Register the diagnostic service for dumping WebSocket telemetry data."""
+    """Register diagnostic service - outputs all data to logs (no file storage)."""
     
     async def diagnostic_dump(call: ServiceCall) -> None:
-        """Dump all WebSocket telemetry data to a JSON file."""
+        """Collect and log telemetry data for all printers."""
         try:
             # Get all coordinators (all printer instances)
             coordinators: List[tuple[str, KCoordinator]] = []
