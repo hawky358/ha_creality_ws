@@ -410,11 +410,22 @@ class CurrentObjectSensor(KEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        # If printer is off or unavailable, show N/A
         if self._should_zero():
             return "N/A"
+        
         d = self.coordinator.data or {}
         v = d.get("current_object") or d.get("currentObject")
-        return str(v) if v is not None else None
+        
+        # If no current object and printer is not printing, show "not printing"
+        if not v or v.strip() == "":
+            # Check if printer is actually printing
+            fname = d.get("printFileName") or ""
+            if not fname:
+                return "not printing"
+            return None
+        
+        return str(v)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -434,16 +445,40 @@ class ObjectCountSensor(KEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
+        # If printer is off or unavailable, show 0
         if self._should_zero():
             return 0
+        
         d = self.coordinator.data or {}
+        
+        # Check if printer is actually printing
+        fname = d.get("printFileName") or ""
+        if not fname:
+            return 0  # "not printing" equivalent for numeric sensor
+        
+        # Try to get objects data from various possible fields
         objs = d.get("objects_list") or d.get("objectsList") or d.get("objects")
+        
+        # Handle JSON string format (from diagnostic logs)
+        if isinstance(objs, str):
+            try:
+                import json
+                parsed_objs = json.loads(objs)
+                if isinstance(parsed_objs, list):
+                    return len(parsed_objs)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        # Handle array format
         if isinstance(objs, list):
             return len(objs)
+        
+        # Handle dict format with list inside
         if isinstance(objs, dict):
             lst = objs.get("list")
             if isinstance(lst, list):
                 return len(lst)
+        
         return None
 
 
@@ -488,7 +523,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Add box temperature if supported by model and data is available
     has_box_sensor = entry.data.get("_cached_has_box_sensor", False)
-    has_box_data = bool((coord.data or {}).get("boxTemp") or (coord.data or {}).get("maxBoxTemp"))
+    has_box_data = bool((coord.data or {}).get("boxTemp") is not None)
     
     for spec in SPECS:
         if spec.get("uid") == "box_temperature":

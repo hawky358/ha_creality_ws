@@ -43,13 +43,13 @@ def parse_model_version(s: str | None) -> tuple[str | None, str | None]:
     hw = parts.get("printer hw ver")
     sw = parts.get("printer sw ver")
     
-    # If printer versions are empty, use DWIN versions (prefixed with "DWIN")
-    if not hw:
+    # If printer versions are empty or just whitespace, use DWIN versions (prefixed with "DWIN")
+    if not hw or hw.strip() == "":
         hw = parts.get("dwin hw ver")
         if hw:
             hw = f"DWIN {hw}"
     
-    if not sw:
+    if not sw or sw.strip() == "":
         sw = parts.get("dwin sw ver")
         if sw:
             sw = f"DWIN {sw}"

@@ -87,7 +87,9 @@ class NozzleTargetNumber(KEntity, NumberEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "nozzle_target")
-        max_nozzle_temp = self.coordinator.data.get("maxNozzleTemp")
+        # Use cached max temperature value with fallback to live data
+        max_temps = self._get_cached_max_temps()
+        max_nozzle_temp = max_temps.get("max_nozzle_temp")
         self._attr_native_max_value = float(max_nozzle_temp) if max_nozzle_temp is not None else 300.0
     @property
     def native_value(self) -> float | None:
@@ -119,7 +121,9 @@ class BedTargetNumber(KEntity, NumberEntity):
     def __init__(self, coordinator, bed_index: int = 0) -> None:
         super().__init__(coordinator, self._attr_name, f"bed_target_{bed_index}")
         self._idx = int(bed_index)
-        max_bed_temp = self.coordinator.data.get("maxBedTemp")
+        # Use cached max temperature value with fallback to live data
+        max_temps = self._get_cached_max_temps()
+        max_bed_temp = max_temps.get("max_bed_temp")
         self._attr_native_max_value = float(max_bed_temp) if max_bed_temp is not None else 100.0
 
     @property
@@ -151,9 +155,18 @@ class BoxTargetNumber(KEntity, NumberEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "box_target")
-        max_box_temp = self.coordinator.data.get("maxBoxTemp")
-        if max_box_temp is None or not isinstance(max_box_temp, (int, float)):
+        # Use cached max temperature value with fallback to live data
+        max_temps = self._get_cached_max_temps()
+        max_box_temp = max_temps.get("max_box_temp")
+        
+        # Handle printers without heated chamber (maxBoxTemp is None)
+        if max_box_temp is None:
+            # Default to 60°C for printers with box sensor but no heated chamber
             max_box_temp = 60
+        elif not isinstance(max_box_temp, (int, float)):
+            # Fallback for invalid values
+            max_box_temp = 60
+            
         self._attr_native_max_value = float(max_box_temp)
     @property
     def native_value(self) -> float | None:

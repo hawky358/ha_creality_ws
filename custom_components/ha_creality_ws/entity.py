@@ -50,6 +50,33 @@ class KEntity(CoordinatorEntity):
             pass
         return None
 
+    def _get_cached_max_temps(self) -> dict[str, float | None]:
+        """
+        Get cached max temperature values from config entry.
+        Returns dict with max_bed_temp, max_nozzle_temp, max_box_temp keys.
+        Falls back to live data if cached values are not available.
+        """
+        try:
+            entry_id = getattr(self.coordinator, '_config_entry_id', None)
+            if entry_id:
+                entry_obj = self.coordinator.hass.config_entries.async_get_entry(entry_id)
+                if entry_obj and entry_obj.data.get("_device_info_cached"):
+                    return {
+                        "max_bed_temp": entry_obj.data.get("_cached_max_bed_temp"),
+                        "max_nozzle_temp": entry_obj.data.get("_cached_max_nozzle_temp"),
+                        "max_box_temp": entry_obj.data.get("_cached_max_box_temp"),
+                    }
+        except Exception:
+            pass
+        
+        # Fallback to live data if cached values are not available
+        d = self.coordinator.data or {}
+        return {
+            "max_bed_temp": d.get("maxBedTemp"),
+            "max_nozzle_temp": d.get("maxNozzleTemp"),
+            "max_box_temp": d.get("maxBoxTemp"),
+        }
+
     @property
     def device_info(self) -> DeviceInfo:
         # First try to get cached device info from entry
