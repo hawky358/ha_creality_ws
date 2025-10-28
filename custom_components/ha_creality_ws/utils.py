@@ -201,3 +201,30 @@ class ModelDetection:
         self.has_box_control = self.is_k2_pro or self.is_k2_plus
         self.has_box_sensor = (self.is_k1_family and not self.is_k1_se) or self.is_k1_max or self.is_k2_family
         self.has_light = not (self.is_k1_se or self.is_ender_v3_family)
+        
+        self.friendly_name = self.get_friendly_name() or self.model
+        
+    def get_friendly_name(self):
+        
+        if self.is_k1_base:
+            return "K1"
+        if self.is_k1_se:
+            return "K1 SE"
+        if self.is_k1_max:
+            return "K1 Max"
+        if self.is_k2_base:
+            return "K2"
+        if self.is_k2_pro:
+            return "K2 Pro"
+        if self.is_k2_plus:
+            return "K2 Plus"
+        if self.is_ender_v3_ke:
+            return "Ender-3 V3 KE"
+        if self.is_ender_v3_plus:
+            return "Ender-3 V3 Plus"
+        if self.is_ender_v3:
+            return "Ender-3 V3"
+        if self.is_creality_hi:
+            return "Creality Hi"
+        
+        return None

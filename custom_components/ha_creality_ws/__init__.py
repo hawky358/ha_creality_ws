@@ -118,11 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             ok = await coord.wait_first_connect(timeout=10.0)
             if ok and coord.data:
                 # Store device info in entry data
-                model = coord.data.get("model") or "K by Creality"
+                printermodel = ModelDetection(coord.data)
+                model = printermodel.friendly_name or "K by Creality"
                 hostname = coord.data.get("hostname")
                 model_version = coord.data.get("modelVersion")
-                
-                printermodel = ModelDetection(coord.data)
                 new_data = dict(entry.data)
                 new_data["_device_info_cached"] = True
                 new_data["_cached_version"] = current_version
