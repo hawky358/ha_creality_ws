@@ -249,7 +249,7 @@ async def _register_diagnostic_service(hass: HomeAssistant) -> None:
             diagnostic_data = {
                 "timestamp": datetime.now().isoformat(),
                 "home_assistant_version": getattr(hass.config, 'version', 'unknown'),
-                "integration_version": _get_integration_version(),
+                "integration_version": await _get_integration_version(),
                 "printers": {}
             }
             
