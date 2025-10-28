@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import json
+import asyncio
 from datetime import datetime, timedelta
 from typing import Callable, List, Optional, Any
 
@@ -33,7 +34,12 @@ PLATFORMS: list[str] = ["sensor", "switch", "camera", "button", "number"]
 import json
 import os
 
-def _get_integration_version() -> str:
+async def _get_integration_version() -> str:
+    """Get current integration version from manifest.json"""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _read_version_from_manifest)
+   
+def _read_version_from_manifest():
     """Get current integration version from manifest.json"""
     try:
         manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
@@ -98,7 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(str(exc)) from exc
 
     # Get current integration version
-    current_version = _get_integration_version()
+    current_version = await _get_integration_version()
     cached_version = entry.data.get("_cached_version", "0.0.0")
     
     # Detect and store device info during initial setup or on version upgrade
