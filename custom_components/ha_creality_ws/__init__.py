@@ -33,13 +33,16 @@ PLATFORMS: list[str] = ["sensor", "switch", "camera", "button", "number"]
 import json
 import os
 
-def _get_integration_version() -> str:
+async def _get_integration_version(hass: HomeAssistant) -> str:
     """Get current integration version from manifest.json"""
     try:
         manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
-            return manifest.get("version", "0.0.0")
+        # Use Home Assistant's async file operations
+        content = await hass.async_add_executor_job(
+            lambda: open(manifest_path, "r").read()
+        )
+        manifest = json.loads(content)
+        return manifest.get("version", "0.0.0")
     except Exception:
         return "0.0.0"
 
@@ -98,7 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(str(exc)) from exc
 
     # Get current integration version
-    current_version = _get_integration_version()
+    current_version = await _get_integration_version(hass)
     cached_version = entry.data.get("_cached_version", "0.0.0")
     
     # Detect and store device info during initial setup or on version upgrade
@@ -106,6 +109,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     should_re_cache = (
         not entry.data.get("_device_info_cached") or
         cached_version != current_version
+    )
+    
+    # Also re-cache if max temperature values are missing (migration from older versions)
+    should_re_cache = should_re_cache or (
+        entry.data.get("_cached_max_bed_temp") is None or
+        entry.data.get("_cached_max_nozzle_temp") is None
     )
     
     if should_re_cache:
@@ -132,6 +141,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 new_data["_cached_has_light"] = printermodel.has_light
                 new_data["_cached_has_box_sensor"] = printermodel.has_box_sensor
                 new_data["_cached_has_box_control"] = printermodel.has_box_control
+                
+                # Cache max temperature values for temperature control limits
+                new_data["_cached_max_bed_temp"] = coord.data.get("maxBedTemp")
+                new_data["_cached_max_nozzle_temp"] = coord.data.get("maxNozzleTemp")
+                new_data["_cached_max_box_temp"] = coord.data.get("maxBoxTemp")  # May be None for printers without heated chamber
                 
                 # Re-detect camera type if upgrading or missing
                 cached_camera_type = entry.data.get("_cached_camera_type")
@@ -243,7 +257,7 @@ async def _register_diagnostic_service(hass: HomeAssistant) -> None:
             diagnostic_data = {
                 "timestamp": datetime.now().isoformat(),
                 "home_assistant_version": getattr(hass.config, 'version', 'unknown'),
-                "integration_version": _get_integration_version(),
+                "integration_version": await _get_integration_version(hass),
                 "printers": {}
             }
             
